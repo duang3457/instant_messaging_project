@@ -1,0 +1,6 @@
+# 全局包含目录
+INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR})
+
+# 添加子目录
+ADD_SUBDIRECTORY(chat-room)
+ADD_SUBDIRECTORY(client)

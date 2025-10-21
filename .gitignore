@@ -1,0 +1,92 @@
+
+# ===============================================
+# C/C++ 项目 .gitignore 文件
+# ===============================================
+
+# VS Code 相关文件
+.vscode/
+*.code-workspace
+
+# 构建目录和文件
+build/
+cmake-build*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+install_manifest.txt
+
+# 编译产生的文件
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.exe
+*.out
+
+# 调试文件
+*.dSYM/
+*.pdb
+*.ilk
+*.idb
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+logs/
+
+# 配置文件（可选择性忽略）
+# config.conf
+# *.conf
+
+# 依赖库（如果是本地编译安装）
+deps/
+third_party/
+vendor/
+
+# IDE 相关
+.idea/
+*.user
+*.ncb
+*.suo
+*.vcproj.*
+*.vcxproj.*
+
+# 系统文件
+.directory
+*.desktop
+
+# 打包文件
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# 测试覆盖率文件
+coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# Valgrind 输出
+*.valgrind
+vgcore.*
+
+# Core dumps
+core
+core.*
+
+# 特定于项目的忽略
+# 可以根据需要添加项目特定的文件或目录
