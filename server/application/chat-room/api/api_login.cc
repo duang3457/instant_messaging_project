@@ -45,7 +45,6 @@ int encodeLoginJson(api_error_id input, string message, string &str_json) {
     return 0;
 }
 
- 
 
 int verifyUserPassword(string &email, string &password, string &username) {
     int ret = 0;
@@ -61,16 +60,14 @@ int verifyUserPassword(string &email, string &password, string &username) {
         string db_password = result_set->GetString("password");
         username = result_set->GetString("username");
         LOG_INFO <<"username: " << username <<"mysql-pwd: " << db_password << ", user-pwd: " <<  password;
-        if (db_password == password)            //对比密码是否一致
+        if (db_password == password)       //对比密码是否一致
             ret = 0;                    //对比成功
         else
             ret = -1;                   //对比失败
     } else {                        // 说明用户不存在
         ret = -1;
     }
-
     delete result_set;
-
     return ret;
 }
 

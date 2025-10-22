@@ -16,7 +16,7 @@
 
 
 CacheManager *CacheManager::s_cache_manager = NULL;
-string  CacheManager::conf_path_ = "tc_http_server.conf"; // 默认
+string  CacheManager::conf_path_ = "conf.conf"; // 默认
 CacheConn::CacheConn(const char *server_ip, int server_port, int db_index,
                      const char *password, const char *pool_name) {
     server_ip_ = server_ip;

@@ -8,6 +8,7 @@
 #include <muduo/net/TcpConnection.h>
 
 #include <http_conn.h>
+#include <websocket_conn.h>
 
 class CHttpConn;
 class CWebSocketConn;
@@ -19,17 +20,22 @@ public:
         HTTP,
         WEBSOCKET
     };
-    HttpHandler(const muduo::net::TcpConnectionPtr& conn): tcp_conn_(conn){}
+    HttpHandler(const muduo::net::TcpConnectionPtr& conn): tcp_conn_(conn){
+        LOG_INFO << "构造";
+    }
 
     ~HttpHandler(){
         handler_.reset();
+        LOG_INFO << "析构";
     }
 
     void OnRead(muduo::net::Buffer* buf){
-        if(request_type_ = UNKNOWN) {
+        if(request_type_ == UNKNOWN) {
             const char* in_buf = buf->peek();
             int32_t len = buf->readableBytes();
+            std::cout << "=====================" << std::endl;
             std::cout << "in_buf: " << in_buf << std::endl;
+            std::cout << "=====================" << std::endl;
 
             auto headers = parseHttpHeaders(in_buf, len);
             if(isWebSocketRequest(headers)){
@@ -37,9 +43,9 @@ public:
                 handler_ = std::make_shared<CWebSocketConn>(tcp_conn_);
                 handler_->setHeaders(headers);
             }else{
-                request_type_ = HTTP;
-                handler_ = std::make_shared<CHttpConn>(tcp_conn_);
-                handler_->setHeaders(headers);
+            request_type_ = HTTP;
+            handler_ = std::make_shared<CHttpConn>(tcp_conn_);
+            handler_->setHeaders(headers);
             }
         }
         handler_->OnRead(buf);
@@ -52,6 +58,8 @@ private:
     }
 
     std::unordered_map<std::string, std::string> parseHttpHeaders(const std::string& request) {
+        std::cout << "解析http头" << std::endl;
+        
         std::unordered_map<std::string, std::string> headers;
         std::istringstream stream(request);
         std::string line;
@@ -64,9 +72,11 @@ private:
                 headers[key] = value;
             }
         }
-        for(const auto& [key, value] : headers){
-            std::cout << key << ": " << value << std::endl;
-        }
+        // std::cout << "=====================" << std::endl;
+        // for(const auto& [key, value] : headers){
+        //     std::cout << key << ": " << value << std::endl;
+        // }
+        // std::cout << "=====================" << std::endl;
         return headers;
     }
 

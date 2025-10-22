@@ -7,7 +7,7 @@
 #define MAX_DB_CONN_FAIL_NUM 10
 
 CDBManager *CDBManager::s_db_manager = NULL;
-std::string CDBManager::conf_path_ = "tc_http_server.conf";
+std::string CDBManager::conf_path_ = "conf.conf";
 CResultSet::CResultSet(MYSQL_RES *res) {
     res_ = res;
     // map table field key to index in the result array
@@ -489,7 +489,6 @@ CDBManager *CDBManager::getInstance() {
             s_db_manager = NULL;
         }
     }
-
     return s_db_manager;
 }
 

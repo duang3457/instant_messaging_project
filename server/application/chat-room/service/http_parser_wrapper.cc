@@ -14,6 +14,7 @@
 CHttpParserWrapper::CHttpParserWrapper() {}
 
 void CHttpParserWrapper::ParseHttpContent(const char *buf, uint32_t len) {
+    
     http_parser_init(&http_parser_, HTTP_REQUEST);
     memset(&settings_, 0, sizeof(settings_));
     settings_.on_url = OnUrl;
