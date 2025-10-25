@@ -1,8 +1,6 @@
-
 #ifndef __PUB_SUB_SERVICE_H__
 #define __PUB_SUB_SERVICE_H__
 #include <unordered_set>
- 
 
 //房间主题
 class RoomTopic

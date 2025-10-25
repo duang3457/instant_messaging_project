@@ -25,6 +25,7 @@ private:
     }
     
     bool  handshake_completed_ = false;
+    bool  closing_ = false;     //是否正在关闭
     string username_;           //用户名
     int32_t user_id_ = -1;      //用户id
 };

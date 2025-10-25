@@ -67,10 +67,20 @@ void HttpServer::onConnection(const muduo::net::TcpConnectionPtr& conn)
     }
     else
     {
-        uint32_t uuid = std::any_cast<uint32_t>(conn->getContext());
-        LOG_INFO << "onConnection中" << "uuid: " << uuid << ", onConnection dis conn" << conn.get();
-        std::lock_guard<std::mutex> ulock(mtx_); 
-        s_http_handler_map.erase(uuid);  //自动释放对应http_handler
+        try {
+            if (!conn->getContext().empty()) {
+                uint32_t uuid = std::any_cast<uint32_t>(conn->getContext());
+                LOG_INFO << "onConnection中" << "uuid: " << uuid << ", onConnection dis conn" << conn.get();
+                std::lock_guard<std::mutex> ulock(mtx_); 
+                s_http_handler_map.erase(uuid);  //自动释放对应http_handler
+            } else {
+                LOG_WARN << "Connection context is empty during disconnect";
+            }
+        } catch (const std::bad_any_cast& e) {
+            LOG_ERROR << "Bad any_cast in onConnection disconnect: " << e.what();
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Exception in onConnection disconnect: " << e.what();
+        }
     }
 }
 
@@ -82,6 +92,13 @@ void HttpServer::onMessage(const muduo::net::TcpConnectionPtr& conn,
     std::cout << "Received from " << conn->peerAddress().toIpPort() 
               << ": " << message;
     
+    // 检查连接状态
+    if (!conn->connected()) {
+        LOG_WARN << "Connection not connected, ignoring message";
+        buffer->retrieveAll(); // 清空buffer
+        return;
+    }
+    
     // 安全地获取 UUID
     uint32_t uuid = 0;
     try {
@@ -89,21 +106,37 @@ void HttpServer::onMessage(const muduo::net::TcpConnectionPtr& conn,
             uuid = boost::any_cast<uint32_t>(conn->getContext());
         } else {
             LOG_ERROR << "Connection context is empty";
+            buffer->retrieveAll(); // 清空buffer
             return;
         }
     } catch (const boost::bad_any_cast& e) {
         LOG_ERROR << "Bad any_cast when getting UUID: " << e.what();
+        buffer->retrieveAll(); // 清空buffer
         return;
     }
     
     mtx_.lock();  
-    HttpHandlerPtr &http_conn = s_http_handler_map[uuid];
+    // 这里不能是 &http_conn，否则不会有引用计数+1
+    HttpHandlerPtr http_conn = s_http_handler_map[uuid];
     mtx_.unlock();
+    
+    // 检查连接处理器是否存在
+    if (!http_conn) {
+        LOG_ERROR << "No handler found for UUID: " << uuid;
+        buffer->retrieveAll(); // 清空buffer
+        return;
+    }
+    
     //处理 相关业务
-    if(num_threads_ != 0)  //开启了线程池
-        thread_pool_.run(std::bind(&HttpHandler::OnRead, http_conn, buffer)); //给到业务线程处理
-    else {  //没有开启线程池
-        http_conn->OnRead(buffer);  // 直接在io线程处理
+    try {
+        if(num_threads_ != 0)  //开启了线程池
+            thread_pool_.run(std::bind(&HttpHandler::OnRead, http_conn, buffer)); //给到业务线程处理
+        else {  //没有开启线程池
+            http_conn->OnRead(buffer);  // 直接在io线程处理
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Exception in onMessage: " << e.what();
+        buffer->retrieveAll(); // 清空buffer
     }
 }
 
@@ -130,7 +163,9 @@ int main(int argc, char* argv[])
     muduo::Logger::setLogLevel(log_level);
 
     const char *http_bind_ip = "0.0.0.0";
-    uint16_t http_bind_port = 8080;
+    uint16_t http_bind_port = 8081;
+    char *str_http_bind_port = config_file.GetConfigName("http_bind_port");  
+    http_bind_port = atoi(str_http_bind_port);
 
     // 初始化redis连接池
     CacheManager::SetConfPath(str_conf);

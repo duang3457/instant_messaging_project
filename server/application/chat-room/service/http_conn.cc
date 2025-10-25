@@ -87,9 +87,9 @@ void CHttpConn::OnRead(muduo::net::Buffer *buf) // CHttpConn业务层面的OnRea
 // 账号注册处理
 int CHttpConn::_HandleRegisterRequest(string &url, string &post_data) {
     
-    string resp_json;
+    string resp_json="";
 	int ret = ApiRegisterUser(post_data, resp_json);
-	char *http_body = new char[HTTP_RESPONSE_JSON_MAX];
+	char *http_data = new char[HTTP_RESPONSE_JSON_MAX];
     int code = 200;
     string code_msg;
 	
@@ -98,19 +98,19 @@ int CHttpConn::_HandleRegisterRequest(string &url, string &post_data) {
         //注册正常      //返回token
         code = 204;
         code_msg= "No Content";
-        snprintf(http_body, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_COOKIE, code, code_msg.c_str(), 
+        snprintf(http_data, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_COOKIE, code, code_msg.c_str(), 
             resp_json.c_str(), 0, ""); 	
     } else {
         LOG_INFO << "注册失败, resp_json: " <<resp_json;
         code = 400;
         code_msg= "Bad Request";
-        snprintf(http_body, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_CODE, code, code_msg.c_str(), 
+        snprintf(http_data, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_CODE, code, code_msg.c_str(), 
             (int)resp_json.length(),  resp_json.c_str()); 	
     }
-    tcp_conn_->send(http_body);
+    tcp_conn_->send(http_data);
     LOG_INFO << "================ " ;
-    LOG_INFO << "http_body: "<< http_body;
-    delete[] http_body;
+    LOG_INFO << "http_data: "<< http_data;
+    delete[] http_data;
     
     return 0;
 }
@@ -120,7 +120,7 @@ int CHttpConn::_HandleLoginRequest(string &url, string &post_data)
 {
 	string resp_json;
 	int ret = ApiUserLogin(post_data, resp_json);
-	char *http_body = new char[HTTP_RESPONSE_JSON_MAX];
+	char *http_data = new char[HTTP_RESPONSE_JSON_MAX];
 	int code = 200;
     string code_msg;
 	
@@ -129,19 +129,19 @@ int CHttpConn::_HandleLoginRequest(string &url, string &post_data)
         //登录正常      //返回token
         code = 204;
         code_msg= "No Content";
-        snprintf(http_body, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_COOKIE, code, code_msg.c_str(), 
+        snprintf(http_data, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_COOKIE, code, code_msg.c_str(), 
             resp_json.c_str(), 0, ""); 	
     } else {
         LOG_INFO << "登录失败, resp_json: " <<resp_json;
         code = 400;
         code_msg= "Bad Request";
-        snprintf(http_body, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_CODE, code, code_msg.c_str(), 
+        snprintf(http_data, HTTP_RESPONSE_JSON_MAX, HTTP_RESPONSE_WITH_CODE, code, code_msg.c_str(), 
             (int)resp_json.length(),  resp_json.c_str()); 	
     }
 
-    tcp_conn_->send(http_body);
-    LOG_INFO << "  http_body: "<< http_body;
-    delete[] http_body;
+    tcp_conn_->send(http_data);
+    LOG_INFO << "  http_data: "<< http_data;
+    delete[] http_data;
     return 0;
 }
 
@@ -163,10 +163,10 @@ int CHttpConn::_HandleHtml(string &url, string &post_data) {
 </html>
 )";
     
-    char *http_body = new char[HTTP_RESPONSE_HTM_MAX];
-    snprintf(http_body, HTTP_RESPONSE_HTM_MAX, HTTP_RESPONSE_HTML, (int)html_content.length(), html_content.c_str());
-    tcp_conn_->send(http_body);
-    delete[] http_body;
+    char *http_data = new char[HTTP_RESPONSE_HTM_MAX];
+    snprintf(http_data, HTTP_RESPONSE_HTM_MAX, HTTP_RESPONSE_HTML, (int)html_content.length(), html_content.c_str());
+    tcp_conn_->send(http_data);
+    delete[] http_data;
     return 0;
 }
 
@@ -188,10 +188,10 @@ int CHttpConn::_HandleMemHtml(string &url, string &post_data) {
         </html>
         )";
     
-    char *http_body = new char[HTTP_RESPONSE_HTM_MAX];
-    snprintf(http_body, HTTP_RESPONSE_HTM_MAX, HTTP_RESPONSE_HTML, (int)html_content.length(), html_content.c_str());
-    tcp_conn_->send(http_body);
-    delete[] http_body;
+    char *http_data = new char[HTTP_RESPONSE_HTM_MAX];
+    snprintf(http_data, HTTP_RESPONSE_HTM_MAX, HTTP_RESPONSE_HTML, (int)html_content.length(), html_content.c_str());
+    tcp_conn_->send(http_data);
+    delete[] http_data;
     return 0;
 }
 

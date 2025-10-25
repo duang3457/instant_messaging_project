@@ -90,7 +90,6 @@ struct WebSocketFrame {
     std::string payload_data;
 };
 
- 
 
 WebSocketFrame parseWebSocketFrame(const std::string& data) {
     WebSocketFrame frame;
@@ -124,6 +123,7 @@ WebSocketFrame parseWebSocketFrame(const std::string& data) {
 
     // 解析掩码
     if (frame.mask) {
+        // 如果MASK set to 1, 从data里获取长度为4字节的Masking-key
         std::memcpy(frame.masking_key, bytes + offset, 4);
         offset += 4;
     }
@@ -141,28 +141,37 @@ WebSocketFrame parseWebSocketFrame(const std::string& data) {
     return frame;
 }
 
+
 // 构造 WebSocket 数据帧
 std::string buildWebSocketFrame(const std::string& payload, uint8_t opcode = 0x01) {
     std::string frame;
 
+    // Fin RSV1 RSV2 RSV3 opcode(4bit)
+    //  1    0    0    0  opcode的后四位
     frame.push_back(0x80 | (opcode & 0x0F));
 
+    // MASK  Paylaod len(7bit)最大承载127，
+    // 但是126,127是保留值，分别表示
+    // 126：接下来用16bit存储长度
+    // 127：接下来用64bit存储长度
     size_t payload_length = payload.size();
     if (payload_length <= 125) {
         frame.push_back(static_cast<uint8_t>(payload_length));
     } else if (payload_length <= 65535) {
         frame.push_back(126);
+        // >> 8 是取高八位
+        // & 0xFF 取低八位
+        // 显示将高八位放在前面，低八位放在后面，防止不同架构下顺序不同（防止小端序架构）
         frame.push_back(static_cast<uint8_t>((payload_length >> 8) & 0xFF));
         frame.push_back(static_cast<uint8_t>(payload_length & 0xFF));
     } else {
+        // 64位同理
         frame.push_back(127);
         for (int i = 7; i >= 0; i--) {
             frame.push_back(static_cast<uint8_t>((payload_length >> (8 * i)) & 0xFF));
         }
     }
-
     frame += payload;
-
     return frame;
 }
 CWebSocketConn::CWebSocketConn(const TcpConnectionPtr& conn)
@@ -172,118 +181,129 @@ CWebSocketConn::CWebSocketConn(const TcpConnectionPtr& conn)
 }
 CWebSocketConn::~CWebSocketConn() {
     LOG_INFO << "析构";
-    if(user_id_ != -1) {
-        for(int i = 0; i < GetRoomIdsSize(); i++) {
-            PubSubService::GetInstance().DeleteSubscriber(GetRoomId(i), user_id_);
+    try {
+        if(user_id_ != -1) {
+            for(int i = 0; i < GetRoomIdsSize(); i++) {
+                PubSubService::GetInstance().DeleteSubscriber(GetRoomId(i), user_id_);
+            }
+            
+            // 使用互斥锁保护map操作
+            std::lock_guard<std::mutex> lock(mtx_);
+            s_user_ws_conn_map.erase(user_id_);
         }
-        s_user_ws_conn_map.erase(user_id_);
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Exception in CWebSocketConn destructor: " << e.what();
     }
-       
 }
 
 
 void CWebSocketConn::OnRead(Buffer* buf)
 {
     LOG_INFO << "前端发来消息";
-
+    
+    // 如果连接正在关闭，忽略后续消息
+    if (closing_) {
+        LOG_INFO << "Connection is closing, ignoring message";
+        buf->retrieveAll(); // 清空缓冲区
+        return;
+    }
+    
     if (!handshake_completed_) {
         // 处理 WebSocket 握手
         std::string request(buf->retrieveAllAsString());
-        url_ = getSubdirectoryFromHttpRequest(request);   // 获取url 后续可以根据不同的url选择不同的处理逻辑，目前没有做抽象，不管url是什么都是同样的处理
-        
-        if (request.find("Upgrade: websocket") != std::string::npos) {
-            LOG_INFO << "升级为websocket";
-            size_t key_start = request.find("Sec-WebSocket-Key: ");
-            if (key_start != std::string::npos) {
-                key_start += 19;
-                size_t key_end = request.find("\r\n", key_start);
-                std::string key = request.substr(key_start, key_end - key_start);
+        url_ = getSubdirectoryFromHttpRequest(request);   
+        LOG_INFO << "升级为websocket";
+        size_t key_start = request.find("Sec-WebSocket-Key: ");
+        if (key_start != std::string::npos) {
+            key_start += 19;
+            size_t key_end = request.find("\r\n", key_start);
+            std::string key = request.substr(key_start, key_end - key_start);
 
-                std::string response = generateWebSocketHandshakeResponse(key);
-                send(response);
+            std::string response = generateWebSocketHandshakeResponse(key);
+            send(response);
 
-                handshake_completed_ = true;
-                LOG_INFO << "WebSocket handshake completed";
-                // 校验  cookie
-                string  Cookie = headers_["Cookie"];
-                string  sid;
-                if(!Cookie.empty()) {
-                     
-                    sid  = extractSid(Cookie);
-                    LOG_INFO << "sid = " << sid;
-                }
-
-                if(Cookie.empty() || GetUsernameByToken(username_, sid) != 0) {
-                    LOG_WARN << "cookie 校验失败" << ", Cookie.empty():" << Cookie.empty() << ", username_:" << username_;
-                    // 关闭websocket
-                    // disconnect();
-                     sendCloseFrame(1008, "Cookie validation failed");
-                } else 
-                {
-                      //处理校验正常的逻辑
-                    //获取用户 id
-                    int ret = GetUserIdByUsername(user_id_, username_);  
-                    if(ret != 0) {
-                        LOG_WARN << "获取用户id失败";
-                        // 关闭websocket
-                        disconnect();
-                    } else {
+            handshake_completed_ = true;
+            LOG_INFO << "WebSocket handshake completed";
+            // 校验  cookie   
+            string Cookie = headers_["Cookie"];
+            string sid;
+            if(!Cookie.empty()) {
+                sid  = extractSid(Cookie);
+                LOG_INFO << "sid = " << sid;
+            }
+            if(Cookie.empty() || GetUsernameByToken(username_, sid) != 0) {
+                LOG_WARN << "cookie 校验失败" << ", Cookie.empty():" << Cookie.empty() << ", username_:" << username_;
+                // 关闭websocket
+                // disconnect();
+                sendCloseFrame(1008, "Cookie validation failed");
+            } else 
+            {
+                //处理校验正常的逻辑
+                //获取用户 id
+                int ret = GetUserIdByUsername(user_id_, username_);  
+                if(ret != 0) {
+                    LOG_WARN << "获取用户id失败，token可能已过期";
+                    sendCloseFrame(1008, "Token expired or invalid");
+                } else {
+                    // 使用互斥锁保护map操作
+                    {
+                        std::lock_guard<std::mutex> lock(mtx_);
                         s_user_ws_conn_map.insert({ user_id_, shared_from_this()});
-                        // 发送信息给 客户端  
+                    }
+                    
+                    // 发送信息给 客户端  
+                    Json::Value root;
+                    
+                    root["type"] = "hello";
+                    Json::Value payload;
+                    Json::Value me;
+                    me["id"] = user_id_;
+                    me["username"] = username_;
+                    payload["me"] = me;
 
-                        Json::Value root;
-                       
-                        root["type"] = "hello";
-                        Json::Value payload;
-                        Json::Value me;
-                        me["id"] = user_id_;
-                        me["username"] = username_;
-                        payload["me"] = me;
-
-                        Json::Value rooms;
-                        for(int i = 0; i < GetRoomIdsSize(); i++) {
-                            PubSubService::GetInstance().AddSubscriber(GetRoomId(i), user_id_);
-                            string  last_message_id;
-                            MessageBatch  message_batch;
-                            // 获取房间的消息
-                            ApiGetRoomHistory(GetRoomId(i), last_message_id, message_batch);     
-                            Json::Value  room;  
-                            room["id"] = GetRoomId(i);      //聊天室主题名称
-                            room["name"] = GetRoomId(i);      //聊天室主题名称 先设置成一样的
-                            room["hasMoreMessages"] = message_batch.has_more;
-                            Json::Value  messages; 
-                            for(int j = 0; j < message_batch.messages.size(); j++) {
-                                Json::Value  message;
-                                Json::Value user;
-                                message["id"] = message_batch.messages[j].id;
-                                message["content"] = message_batch.messages[j].content;   
-                                user["id"] = user_id_;
-                                user["username"] = username_;
-                                message["user"] = user;
-                                message["timestamp"] = (Json::UInt64)message_batch.messages[j].timestamp;
-                                messages[j] = message;
-                            }
-                            if(message_batch.messages.size() > 0)
-                                room["messages"] = messages;
-                            else 
-                                room["messages"] = Json::arrayValue;  //不能为NULL，否则前端报异常
-                            rooms[i] = room;
+                    Json::Value rooms;
+                    for(int i = 0; i < GetRoomIdsSize(); i++) {
+                        PubSubService::GetInstance().AddSubscriber(GetRoomId(i), user_id_);
+                        string  last_message_id;
+                        MessageBatch  message_batch;
+                        // 获取房间的消息
+                        ApiGetRoomHistory(GetRoomId(i), last_message_id, message_batch);     
+                        Json::Value room;  
+                        room["id"] = GetRoomId(i);      //聊天室主题名称
+                        room["name"] = GetRoomId(i);      //聊天室主题名称 先设置成一样的
+                        room["hasMoreMessages"] = message_batch.has_more;
+                        Json::Value  messages; 
+                        for(int j = 0; j < message_batch.messages.size(); j++) {
+                            Json::Value message;
+                            Json::Value user;
+                            message["id"] = message_batch.messages[j].id;
+                            message["content"] = message_batch.messages[j].content;   
+                            user["id"] = user_id_;
+                            user["username"] = username_;
+                            message["user"] = user;
+                            message["timestamp"] = (Json::UInt64)message_batch.messages[j].timestamp;
+                            messages[j] = message;
                         }
-                        payload["rooms"] = rooms;
-                        root["payload"] = payload;
-                        Json::FastWriter writer;
-                        string str_json = writer.write(root);
-   
-                        // 打印 JSON 字符串
-                        LOG_INFO << "Serialized JSON: " << str_json;
-                        // 封装websocket帧
-                        std::string hello = buildWebSocketFrame(str_json);
-                        send(hello);
-                    } 
-                }
+                        if(message_batch.messages.size() > 0)
+                            room["messages"] = messages;
+                        else 
+                            room["messages"] = Json::arrayValue;  //不能为NULL，否则前端报异常
+                        rooms[i] = room;
+                    }
+                    payload["rooms"] = rooms;
+                    root["payload"] = payload;
+                    Json::FastWriter writer;
+                    string str_json = writer.write(root);
 
+                    // 打印 JSON 字符串
+                    LOG_INFO << "Serialized JSON: " << str_json;
+                    // 封装websocket帧
+                    std::string hello = buildWebSocketFrame(str_json);
+                    send(hello);
+                } 
             }
         }
+        
     } else {
         // 处理 WebSocket 数据帧
         std::string data = buf->retrieveAllAsString();
@@ -358,7 +378,6 @@ void CWebSocketConn::OnRead(Buffer* buf)
                 else 
                     payload["messages"] = Json::arrayValue;  //不能为NULL，否则前端报异常
 
-
                 root["type"] = "serverMessages";
                 root["payload"] = payload;
                 Json::FastWriter writer;
@@ -369,7 +388,16 @@ void CWebSocketConn::OnRead(Buffer* buf)
                     // 遍历所有 userIds 获取对应的连接
                     for (int32_t userId : userIds) {
                         LOG_INFO << "userId: " << userId << ", str_json: " << str_json;
-                        CHttpConnPtr ws_conn_ptr =  s_user_ws_conn_map[userId];
+                        
+                        CHttpConnPtr ws_conn_ptr;
+                        {
+                            std::lock_guard<std::mutex> lock(mtx_);
+                            auto it = s_user_ws_conn_map.find(userId);
+                            if (it != s_user_ws_conn_map.end()) {
+                                ws_conn_ptr = it->second;
+                            }
+                        }
+                        
                         if(ws_conn_ptr) {
                             //封装成websocket帧
                             // ws_conn_ptr->send(str_json);
@@ -385,9 +413,6 @@ void CWebSocketConn::OnRead(Buffer* buf)
             } else {
                 LOG_ERROR << "can't handle " << type;
             }
-
-
-
             // 回显消息
             // std::string response = buildWebSocketFrame(frame.payload_data);
             // tcp_conn_->send(response);
@@ -401,39 +426,50 @@ void CWebSocketConn::OnRead(Buffer* buf)
         else {
             LOG_ERROR << "can't handle opcode " <<frame.opcode ;
         }
-
     }
 }
 
 
 // 发送 WebSocket 关闭帧
 void CWebSocketConn::sendCloseFrame(uint16_t code, const std::string& reason) {
-    if (!tcp_conn_) return;
+    if (!tcp_conn_ || !tcp_conn_->connected()) return;
 
-    // 构造关闭帧
-    char frame[2 + reason.size()];
-    frame[0] = (code >> 8) & 0xFF;  // 状态码高位
-    frame[1] = code & 0xFF;         // 状态码低位
-    std::memcpy(frame + 2, reason.data(), reason.size());
-
-    // 发送关闭帧
-    tcp_conn_->send(frame, sizeof(frame));
+    // 标记连接正在关闭
+    closing_ = true;
+    
+    // 构造关闭帧载荷：2字节状态码 + 原因字符串
+    std::string payload;
+    payload.push_back((code >> 8) & 0xFF);  // 状态码高位
+    payload.push_back(code & 0xFF);         // 状态码低位
+    payload += reason;                      // 添加原因字符串
+    
+    // 使用标准WebSocket帧格式构造关闭帧（opcode = 0x08）
+    std::string close_frame = buildWebSocketFrame(payload, 0x08);
+    tcp_conn_->send(close_frame);
+    
+    LOG_INFO << "Sent close frame with code: " << code << ", reason: " << reason;
 }
 
 // 发送 Pong 帧
 void CWebSocketConn::sendPongFrame() {
-    if (!tcp_conn_) return;
+    if (!tcp_conn_ || !tcp_conn_->connected()) return;
 
-    // 构造 Pong 帧（操作码为 0xA）
-    uint8_t frame[2] = {0x8A, 0x00};  // 0x8A 表示 Pong 帧
-    tcp_conn_->send(frame, sizeof(frame));
+    // 使用标准WebSocket帧格式构造Pong帧（opcode = 0x0A），无载荷
+    std::string pong_frame = buildWebSocketFrame("", 0x0A);
+    tcp_conn_->send(pong_frame);
+    
+    LOG_INFO << "Sent Pong frame";
 }
 
 
 void CWebSocketConn::disconnect() {
-    if (tcp_conn_) {
-        // 发送 WebSocket 关闭帧
-        sendCloseFrame(1000, "Normal closure");
-        tcp_conn_->shutdown();
+    try {
+        if (tcp_conn_ && tcp_conn_->connected() && !closing_) {
+            // 发送 WebSocket 关闭帧
+            sendCloseFrame(1000, "Normal closure");
+            tcp_conn_->shutdown();
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Exception in disconnect: " << e.what();
     }
 }

@@ -19,10 +19,14 @@ int ApiGetRoomHistory(string room_name,  string &last_message_id, MessageBatch &
         //封装
         for(int i = 0; i < msgs.size(); i++) {
             LOG_INFO << "Key: " << msgs[i].first << ", Value: " << msgs[i].second;
+
+            // msgs[i].first = "1635724800123-0" (消息ID)
+            // msgs[i].second = "{\"content\":\"Hello World\",\"timestamp\":1635724800,\"user_id\":123}"
+
             Message msg;
             msg.id = msgs[i].first;   //这里保存的是消息id
 
-             bool res;
+            bool res;
             Json::Value root;
             Json::Reader jsonReader;
             res = jsonReader.parse( msgs[i].second, root);
@@ -93,7 +97,6 @@ string SerializeMessageToJson(const Message msg) {
     root["timestamp"] = (Json::UInt64) msg.timestamp;
     root["user_id"] =  (Json::Int64)  msg.user_id;
 
-       
     // 将 JSON 树转换为字符串
     return Json::writeString(writer, root);
 }
@@ -119,6 +122,5 @@ int ApiStoreMessage(string room_name, std::vector<Message> &msgs)
         LOG_INFO << "msgs id: " << id;
         msgs[i].id = id;
     }
-    
     return 0;
 }
