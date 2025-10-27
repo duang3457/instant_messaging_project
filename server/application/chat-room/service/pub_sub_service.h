@@ -1,96 +1,107 @@
+
 #ifndef __PUB_SUB_SERVICE_H__
 #define __PUB_SUB_SERVICE_H__
+#include "api_types.h"
+#include <vector>
+#include <mutex>
+#include <memory>
+#include <unordered_map>
 #include <unordered_set>
+#include <functional>
 
-//房间主题
-class RoomTopic
+//房间管理
+class RoomTopic 
 {
 public:
-    //拥有者后续可以删除该主题
-    RoomTopic(string room_topic, int32_t owner_user_id):
-        room_topic_(room_topic), owner_user_id_(owner_user_id) {
+    RoomTopic(const string &room_id, const string &room_topic, uint32_t creator_id) {
+        room_id_ = room_id;
+        room_topic_ = room_topic;
+        creator_id_ = creator_id;
     }
-    void AddSubscriber(int32_t user_id) {
-        user_ids_.insert(user_id);  //增加订阅者
+    ~RoomTopic() {
+        user_ids_.clear();
     }
-    void DeleteSubscriber(int32_t user_id) {
-        user_ids_.erase(user_id);  //删除订阅者
+
+    void AddSubscriber(uint32_t userid) {
+        user_ids_.insert(userid);
     }
-    // 获取所有订阅者
-    std::unordered_set<int32_t> &getSubscribers() {
+    void DeleteSubscriber(uint32_t userid) {
+        user_ids_.erase(userid);
+    }
+    std::unordered_set<uint32_t> &getSubscribers() {
         return user_ids_;
     }
-    std::unordered_set<int32_t> user_ids_;
+ private:
+    string room_id_;
     string room_topic_;
-    int32_t owner_user_id_;
+    int creator_id_;
+    std::unordered_set<uint32_t> user_ids_;
 };
+
 using RoomTopicPtr = std::shared_ptr<RoomTopic>;
 
-
-using PubSubCallback = std::function<void(std::unordered_set<int32_t>&)>;
-// This is an interface to reduce compile times.
+using PubSubCallback = std::function<void(const std::unordered_set<uint32_t> user_ids)>;
 class PubSubService
 {
 public:
-    // 获取单例实例的静态方法
-    static PubSubService& GetInstance() {
-        static PubSubService instance; // 局部静态变量，线程安全（C++11 起）
+    //单例模式
+    static PubSubService &GetInstance() {
+        static PubSubService instance;
         return instance;
     }
+    PubSubService(){}
+    ~PubSubService(){}
+    bool AddRoomTopic(const string &room_id, const string &room_topic, int creator_id) {
+        std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
 
-    virtual ~PubSubService() {}
-    bool AddRoomTopic(string room_topic, int32_t owner_user_id) {
-        //创建主题
-        RoomTopicPtr room_topic_ptr = std::make_shared<RoomTopic>(room_topic, owner_user_id);
-        // 需要考虑判断主题是不是已经存在了
-        topic_ids.insert({ room_topic, room_topic_ptr});
-        return true;
-    }
-    //删除主题时需要本人，或者管理员
-    bool DeleteRoomTopic(string room_topic, int32_t owner_user_id) {
-        //删除主题
-        topic_ids.erase(room_topic);
-        return true;
-    }
-    // 增加订阅者
-    bool AddSubscriber(string room_topic, int32_t user_id) {
-        // 先找到主题
-        RoomTopicPtr &room_topic_ptr =  topic_ids[room_topic];
-        if(room_topic_ptr) {
-            room_topic_ptr->AddSubscriber(user_id);
-            return true;
-        } else {
+        if (room_topic_map_.find(room_id) != room_topic_map_.end()) {
             return false;
         }
+        RoomTopicPtr room_topic_ptr = std::make_shared<RoomTopic>(room_id, room_topic, creator_id);
+        room_topic_map_[room_id] = room_topic_ptr;
+        return true;
     }
-    bool DeleteSubscriber(string room_topic, int32_t user_id) {
-        // 先找到主题
-        RoomTopicPtr &room_topic_ptr =  topic_ids[room_topic];
-        if(room_topic_ptr) {
-            room_topic_ptr->DeleteSubscriber(user_id);
-            return true;
-        } else {
+    void DeleteRoomTopic(const string &room_id) {
+        std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
+        if (room_topic_map_.find(room_id) != room_topic_map_.end()) {
+            return;
+        }
+        room_topic_map_.erase(room_id);
+    }
+    bool AddSubscriber(const string &room_id, uint32_t userid) {
+        std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
+        if (room_topic_map_.find(room_id) == room_topic_map_.end()) {
             return false;
         }
+        room_topic_map_[room_id]->AddSubscriber(userid);
+        return true;
     }
-
-    //发送主题消息
-    bool PubSubPublish(string room_topic, PubSubCallback callback) {
-        //获取对应主题的用户id
-        RoomTopicPtr &room_topic_ptr =  topic_ids[room_topic];
-        if(room_topic_ptr) {
-            std::unordered_set<int32_t> user_ids = room_topic_ptr->getSubscribers();
-            //然后调用回调函数
-            callback(user_ids);
-            return true;
-        } else {
-            return  false;
+    void DeleteSubscriber(const string &room_id, uint32_t userid) {
+        std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
+        if (room_topic_map_.find(room_id) == room_topic_map_.end()) {
+            return;
         }
+        room_topic_map_[room_id]->DeleteSubscriber(userid);
     }
-
-     std::map<std::string, RoomTopicPtr> topic_ids;
-
+    void PublishMessage(const string &room_id,  PubSubCallback callback) {
+        std::unordered_set<uint32_t> user_ids;
+        {
+            std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
+            if (room_topic_map_.find(room_id) == room_topic_map_.end()) {
+                return;
+            }
+            user_ids = room_topic_map_[room_id]->getSubscribers();
+        }
+        
+        callback(user_ids);   //这里不能有太多耗时的工作
+    }
+    static std::vector<Room> &GetRoomList();  //获取当前的房间列表
+private:
+    std::unordered_map<string, RoomTopicPtr> room_topic_map_;
+    std::mutex room_topic_map_mutex_;
 };
+
+//获取固定的房间
 
 
 #endif

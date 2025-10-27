@@ -38,7 +38,7 @@ class CHttpParserWrapper {
     const char *GetReferer() { return  static_cast<const char *>(referer_.c_str()); }
     const char *GetForwardIP() { return  static_cast<const char *>(forward_ip_.c_str()); }
     const char *GetUserAgent() { return  static_cast<const char *>(user_agent_.c_str()); }
-    const char GetMethod() { return (char)http_parser_.method; }
+    char GetMethod() { return (char)http_parser_.method; }
     const char *GetContentType() { return  static_cast<const char *>(content_type_.c_str()); }
     uint32_t GetContentLen() { return content_len_; }
     const char *GetHost() { return  static_cast<const char *>(host_.c_str()); }

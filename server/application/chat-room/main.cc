@@ -11,6 +11,7 @@
 #include "config_file_reader.h"
 #include "db_pool.h"
 #include "cache_pool.h"
+#include "pub_sub_service.h"
 
 std::map<uint32_t, HttpHandlerPtr> s_http_handler_map;
 
@@ -140,21 +141,35 @@ void HttpServer::onMessage(const muduo::net::TcpConnectionPtr& conn,
     }
 }
 
-void HttpServer::onWriteComplete(const muduo::net::TcpConnectionPtr& conn)
+void HttpServer::onWriteComplete(const muduo::net::TcpConnectionPtr& /*conn*/)
 {
     // std::cout << "Write complete for " << conn->peerAddress().toIpPort() << std::endl;
+}
+
+int load_room_list() {
+    PubSubService& pubSubService = PubSubService::GetInstance();
+
+    std::vector<Room> &all_rooms = PubSubService::GetRoomList(); //获取缺省的聊天室列表
+     
+    for (const auto& room : all_rooms) {
+        pubSubService.AddRoomTopic(room.room_id, room.room_name, 1);
+        LOG_INFO << "Added room to PubSubService: " << room.room_id << " - " << room.room_name;
+    }
+    
+    return 0;
 }
 
 int main(int argc, char* argv[])
 {
     signal(SIGPIPE, SIG_IGN);
-    int ret = 0;
     const char* str_conf = "conf.conf";
     if(argc > 1){
         str_conf = argv[1];
     }else{
         str_conf = (char *)"conf.conf";
     }
+
+    load_room_list();
     
     CConfigFileReader config_file(str_conf); 
 

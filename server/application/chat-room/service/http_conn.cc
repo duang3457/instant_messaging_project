@@ -86,7 +86,7 @@ void CHttpConn::OnRead(muduo::net::Buffer *buf) // CHttpConn业务层面的OnRea
 
 // 账号注册处理
 int CHttpConn::_HandleRegisterRequest(string &url, string &post_data) {
-    
+    (void)url;
     string resp_json="";
 	int ret = ApiRegisterUser(post_data, resp_json);
 	char *http_data = new char[HTTP_RESPONSE_JSON_MAX];
@@ -118,6 +118,7 @@ int CHttpConn::_HandleRegisterRequest(string &url, string &post_data) {
 
 int CHttpConn::_HandleLoginRequest(string &url, string &post_data)
 {
+    (void)url;
 	string resp_json;
 	int ret = ApiUserLogin(post_data, resp_json);
 	char *http_data = new char[HTTP_RESPONSE_JSON_MAX];

@@ -1,11 +1,5 @@
 #include "api_login.h"
 
-#include <iostream>
-#include "muduo/base/Logging.h" // Logger日志头文件
-#include <jsoncpp/json/json.h>
-
-using namespace std;
-
 // / 解析登录信息
 int decodeLoginJson(const std::string &str_json, string &email,
                     string &password) {
@@ -46,61 +40,79 @@ int encodeLoginJson(api_error_id input, string message, string &str_json) {
 }
 
 
-int verifyUserPassword(string &email, string &password, string &username) {
-    int ret = 0;
+int verifyUserPassword(string &email, string &password) {
+    int ret = -1;
+    // 只能使用email
     CDBManager *db_manager = CDBManager::getInstance();
     CDBConn *db_conn = db_manager->GetDBConn("chatroom_slave");
     AUTO_REL_DBCONN(db_manager, db_conn);   //析构时自动归还连接
+    if(!db_conn) {
+        LOG_ERROR << "get db conn failed";
+        return -1;
+    }
 
-    // 根据用户名查询密码
-    string strSql = FormatString("select username, password from users where email='%s'", email.c_str());
+    // 打印当前数据库的所有表
+    LOG_INFO << "=== 查询数据库表信息 ===";
+    string showTablesSQL = "SHOW TABLES";
+    CResultSet *tables_result = db_conn->ExecuteQuery(showTablesSQL.c_str());
+    if (tables_result) {
+        LOG_INFO << "当前数据库中的表：";
+        while (tables_result->Next()) {
+            string table_name = tables_result->GetString(0);  // SHOW TABLES 返回的第一列是表名
+            LOG_INFO << "  - " << table_name;
+        }
+        delete tables_result;
+    } else {
+        LOG_ERROR << "查询数据库表失败";
+    }
+    LOG_INFO << "=== 表信息查询完成 ===";
+
+    //根据email查询密码
+    string strSql = FormatString("select username, password_hash, salt from users where email='%s'", email.c_str());
+    LOG_INFO << "执行:" << strSql;
     CResultSet *result_set = db_conn->ExecuteQuery(strSql.c_str());
-    if (result_set && result_set->Next()) { //如果存在则读取密码
-        // 存在在返回
-        string db_password = result_set->GetString("password");
-        username = result_set->GetString("username");
-        LOG_INFO <<"username: " << username <<"mysql-pwd: " << db_password << ", user-pwd: " <<  password;
-        if (db_password == password)       //对比密码是否一致
-            ret = 0;                    //对比成功
-        else
-            ret = -1;                   //对比失败
-    } else {                        // 说明用户不存在
+    if (result_set && result_set->Next()) { //如果存在则读取密码 
+        string username = result_set->GetString("username");
+        string db_password_hash = result_set->GetString("password_hash");
+        string salt = result_set->GetString("salt");
+        MD5 md5(password + salt);  // 计算出新的密码
+        string client_password_hash = md5.toString();  //  计算出新的密码
+        if(db_password_hash == client_password_hash) {
+            LOG_INFO << "username: " << username << " verify ok";
+            ret = 0;
+        } else {
+            LOG_INFO << "username: " << username << " verify failed";
+            ret = -1;
+        }
+    } else {
         ret = -1;
     }
-    delete result_set;
+
+    if(result_set)
+        delete result_set;
+
     return ret;
 }
 
-// 登录 使用  邮箱  密码
-int ApiUserLogin(std::string &post_data, std::string &resp_json){
-    string username;
+int ApiUserLogin(std::string &post_data, std::string &resp_data){
     string email;
     string password;
 
-    // 判断数据是否为空
-    if (post_data.empty()) {
-        encodeLoginJson(api_error_id::bad_request, "data is empty", resp_json);
+    // json反序列化
+      // 解析json
+    if (decodeLoginJson(post_data, email, password) < 0) {
+        LOG_ERROR << "decodeRegisterJson failed";
+        encodeLoginJson(api_error_id::bad_request, "email or password no fill", resp_data);
         return -1;
     }
 
-     // 解析json
-    if (decodeLoginJson(post_data, email, password) < 0) {
-        LOG_ERROR << "decodeRegisterJson failed";
-        encodeLoginJson(api_error_id::bad_request, "email or password no fill", resp_json);
-        return -1;
+    //校验邮箱  密码
+    int ret = verifyUserPassword(email, password);
+    if(ret == 0) {
+        // 设置cookie
+        ApiSetCookie(email, resp_data);
+    } else {
+        encodeLoginJson(api_error_id::bad_request, "email password no match", resp_data);
     }
-    // 验证账号和密码是否匹配
-    if (verifyUserPassword(email, password, username) != 0) {
-        LOG_ERROR << "verifyUserPassword failed";
-        encodeLoginJson(api_error_id::bad_request, "email password no match", resp_json);
-        return -1;
-    }
- 
-    if (SetCookie(email, resp_json) < 0) {
-        LOG_ERROR << "SetCookie failed";
-        encodeLoginJson(api_error_id::bad_request, "set cookie failed", resp_json);
-        return -1;
-    }
- 
-    return 0;
+    return ret;
 }

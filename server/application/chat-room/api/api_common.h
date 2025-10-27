@@ -6,6 +6,7 @@
 #include "muduo/base/Logging.h" // Logger日志头文件
 #include <string>
 #include "base64.h" 
+#include "md5.h"
 
 using std::string;
 
@@ -64,11 +65,15 @@ enum class errc
 
 std::string api_error_id_to_string(api_error_id input);
 
- std::string generate_identifier();
- int SetCookie(string &user_name, string &token);
+std::string generate_identifier();
+int ApiSetCookie(string &user_name, string &token);
 
 int GetUsernameByEmail(string &email,string &username);
 //根据token获取用户名，如果获取失败返回非0 值，正常返回0
- int GetUsernameByToken(string &username, string &token);
- int GetUserIdByUsername(int32_t &userid,string &username);
+int GetUsernameByToken(string &username, string &token);
+int GetUserIdByUsername(int32_t &userid,string &username);
+
+int ApiGetUserInfoByCookie(string &username, int32_t &userid, string  &email, string cookie);
+
+string RandomString(const int len);
 #endif

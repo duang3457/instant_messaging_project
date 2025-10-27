@@ -1,35 +1,31 @@
 #include "api_msg.h"
-#include <jsoncpp/json/json.h>
 #include "muduo/base/Logging.h"
 
 using namespace std;
 
-int ApiGetRoomHistory(string room_name,  string &last_message_id, MessageBatch &message_batch) 
+int ApiGetRoomHistory(Room room, MessageBatch &message_batch, const int msg_count) 
 {
     CacheManager *cache_manager = CacheManager::getInstance();
     CacheConn *cache_conn = cache_manager->GetCacheConn("msg");
     AUTO_REL_CACHECONN(cache_manager, cache_conn);
 
     std::string stream_ref =   "+";
-    if (!last_message_id.empty()) {
-        stream_ref = stream_ref;
+    if (!room.history_last_message_id.empty()) {
+        stream_ref = "(" + room.history_last_message_id;
     }
     std::vector<std::pair<string, string>> msgs;
-    if(cache_conn->GetXrevrange(room_name, stream_ref, "-", message_batch_size, msgs)) {
+    if(cache_conn->GetXrevrange(room.room_id, stream_ref, "-", msg_count, msgs)) {
         //封装
-        for(int i = 0; i < msgs.size(); i++) {
-            LOG_INFO << "Key: " << msgs[i].first << ", Value: " << msgs[i].second;
-
+        for(size_t i = 0; i < msgs.size(); i++) {
             // msgs[i].first = "1635724800123-0" (消息ID)
             // msgs[i].second = "{\"content\":\"Hello World\",\"timestamp\":1635724800,\"user_id\":123}"
 
             Message msg;
             msg.id = msgs[i].first;   //这里保存的是消息id
-
-            bool res;
+            room.history_last_message_id = msg.id;  // 保存最后一个消息的id
             Json::Value root;
             Json::Reader jsonReader;
-            res = jsonReader.parse( msgs[i].second, root);
+            bool res = jsonReader.parse(msgs[i].second, root);
             if (!res) {
                 LOG_ERROR << "parse redis msg failed ";
                 return -1;
@@ -57,12 +53,14 @@ int ApiGetRoomHistory(string room_name,  string &last_message_id, MessageBatch &
             msg.timestamp = root["timestamp"].asUInt64();
             message_batch.messages.push_back(msg);
         }
-        message_batch.has_more = true;
+        if(msgs.size() < msg_count)
+            message_batch.has_more = false;     //读取到消息数量 比要求的少了，所以判定为没有更多数据可以读取了
+        else
+            message_batch.has_more = true;
         return 0;
     } else {
         return -1;
     }
-
 }
 
 // 将 std::vector<Message> 序列化为 JSON 字符串
@@ -107,7 +105,7 @@ int ApiStoreMessage(string room_name, std::vector<Message> &msgs)
     CacheConn *cache_conn = cache_manager->GetCacheConn("msg");
     AUTO_REL_CACHECONN(cache_manager, cache_conn);
 
-    for(int i = 0; i < msgs.size(); i++) {
+    for(size_t i = 0; i < msgs.size(); i++) {
         //先将msgs做序列化
         string json_msg = SerializeMessageToJson(msgs[i]);
         std::vector<std::pair<string, string>>  field_value_pairs;
