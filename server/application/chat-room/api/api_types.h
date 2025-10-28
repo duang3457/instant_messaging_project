@@ -29,7 +29,7 @@ struct Message
     // UTC timestamp when the server received the message
     uint64_t timestamp; //直接存储秒的单位
     // ID of the user that sent the message
-    std::int64_t user_id{};
+    std::string user_id;
 };
 
 // A room hiBstory message batch

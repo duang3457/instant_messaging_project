@@ -18,7 +18,7 @@ string RandomString(const int len) /*参数为字符串的长度*/
     return str; /*返回生成的随机字符串*/
 } 
 
-int GetUsernameByToken(string &username, string &token) {
+int ApiGetUsernameByToken(string &username, string &token) {
     int ret = 0;
     CacheManager *cache_manager = CacheManager::getInstance();
     CacheConn *cache_conn = cache_manager->GetCacheConn("token");
@@ -166,5 +166,32 @@ int ApiGetUserInfoByCookie(string &username, int32_t &userid, string  &email, st
     } else {
         return -1;
     }
+}
+
+int ApiGetUserInfoById(const string &userid, string &username, string &avatar) {
+    int ret = 0;
+    CDBManager *db_manager = CDBManager::getInstance();
+    CDBConn *db_conn = db_manager->GetDBConn("user_centre");
+    AUTO_REL_DBCONN(db_manager, db_conn);   //析构时自动归还连接
+
+    //根据userid获取用户名和头像
+    string strSql = FormatString("select * from user where id='%s'", userid.c_str());
+    CResultSet *result_set = db_conn->ExecuteQuery(strSql.c_str());
+    if (result_set && result_set->Next()) {  
+        // 用户存在，获取用户名
+        username = result_set->GetString("userName");
+        avatar = result_set->GetString("avatarUrl");
+        
+        LOG_INFO << "Found user: userid=" << userid << ", username=" << username;
+        ret = 0;
+    } else {                        
+        // 用户不存在
+        LOG_WARN << "User not found for userid: " << userid;
+        ret = -1;
+    }
+
+    delete result_set;
+
+    return ret;
 }
  

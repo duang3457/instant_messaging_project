@@ -70,10 +70,11 @@ int ApiSetCookie(string &user_name, string &token);
 
 int GetUsernameByEmail(string &email,string &username);
 //根据token获取用户名，如果获取失败返回非0 值，正常返回0
-int GetUsernameByToken(string &username, string &token);
+int ApiGetUsernameByToken(string &username, string &token);
 int GetUserIdByUsername(int32_t &userid,string &username);
 
 int ApiGetUserInfoByCookie(string &username, int32_t &userid, string  &email, string cookie);
+int ApiGetUserInfoById(const string &userid, string &username, string &avatar);
 
 string RandomString(const int len);
 #endif

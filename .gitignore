@@ -88,5 +88,5 @@ vgcore.*
 core
 core.*
 
-# 特定于项目的忽略
-# 可以根据需要添加项目特定的文件或目录
+# deploy
+deploy/

@@ -4,6 +4,7 @@
 
 #include "http_conn.h"
 #include <sstream> // 包含 istringstream 的头文件
+#include <algorithm> // 包含 sort 算法
 #include <openssl/sha.h>
 #include "muduo/base/Logging.h" // Logger日志头文件
 #include "api_types.h"
@@ -28,11 +29,16 @@ private:
     int sendHelloMessage();
     int handleClientMessages(Json::Value &root);
     int handleRequestRoomHistory(Json::Value &root);
+    int handleHelloMessage(Json::Value &root);
+    
+    // 辅助方法
+    bool IsConnected() const;
+    void SendMessage(const std::string& frame);
     
     bool  handshake_completed_ = false;
 
     string username_;           //用户名
-    int32_t userid_ = -1;      //用户id
+    string userid_;      //用户id
 
     std::unordered_map<string, Room> rooms_map_;    //加入的房间
 };

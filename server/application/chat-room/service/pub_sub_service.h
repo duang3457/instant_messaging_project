@@ -13,7 +13,7 @@
 class RoomTopic 
 {
 public:
-    RoomTopic(const string &room_id, const string &room_topic, uint32_t creator_id) {
+    RoomTopic(const string &room_id, const string &room_topic, string creator_id) {
         room_id_ = room_id;
         room_topic_ = room_topic;
         creator_id_ = creator_id;
@@ -22,25 +22,25 @@ public:
         user_ids_.clear();
     }
 
-    void AddSubscriber(uint32_t userid) {
+    void AddSubscriber(string userid) {
         user_ids_.insert(userid);
     }
-    void DeleteSubscriber(uint32_t userid) {
+    void DeleteSubscriber(string userid) {
         user_ids_.erase(userid);
     }
-    std::unordered_set<uint32_t> &getSubscribers() {
+    std::unordered_set<string> &getSubscribers() {
         return user_ids_;
     }
  private:
     string room_id_;
     string room_topic_;
-    int creator_id_;
-    std::unordered_set<uint32_t> user_ids_;
+    string creator_id_;
+    std::unordered_set<string> user_ids_;
 };
 
 using RoomTopicPtr = std::shared_ptr<RoomTopic>;
 
-using PubSubCallback = std::function<void(const std::unordered_set<uint32_t> user_ids)>;
+using PubSubCallback = std::function<void(const std::unordered_set<string> user_ids)>;
 class PubSubService
 {
 public:
@@ -51,7 +51,7 @@ public:
     }
     PubSubService(){}
     ~PubSubService(){}
-    bool AddRoomTopic(const string &room_id, const string &room_topic, int creator_id) {
+    bool AddRoomTopic(const string &room_id, const string &room_topic, string creator_id) {
         std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
 
         if (room_topic_map_.find(room_id) != room_topic_map_.end()) {
@@ -68,7 +68,7 @@ public:
         }
         room_topic_map_.erase(room_id);
     }
-    bool AddSubscriber(const string &room_id, uint32_t userid) {
+    bool AddSubscriber(const string &room_id, string userid) {
         std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
         if (room_topic_map_.find(room_id) == room_topic_map_.end()) {
             return false;
@@ -76,7 +76,7 @@ public:
         room_topic_map_[room_id]->AddSubscriber(userid);
         return true;
     }
-    void DeleteSubscriber(const string &room_id, uint32_t userid) {
+    void DeleteSubscriber(const string &room_id, string userid) {
         std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
         if (room_topic_map_.find(room_id) == room_topic_map_.end()) {
             return;
@@ -84,7 +84,7 @@ public:
         room_topic_map_[room_id]->DeleteSubscriber(userid);
     }
     void PublishMessage(const string &room_id,  PubSubCallback callback) {
-        std::unordered_set<uint32_t> user_ids;
+        std::unordered_set<string> user_ids;
         {
             std::lock_guard<std::mutex> lck(room_topic_map_mutex_);
             if (room_topic_map_.find(room_id) == room_topic_map_.end()) {

@@ -881,7 +881,7 @@ bool  CacheConn::GetXrevrange(const string & key,
                     value = fields->element[j + 1]->str;
                      message_content += field + ": " + value + ", ";
                 }
-                LOG_INFO << string( "key: " + key + ", ID: " + message_id + ", Content: " + message_content);
+                // LOG_INFO << string( "key: " + key + ", ID: " + message_id + ", Content: " + message_content);
                 msgs.push_back({message_id, value});
             }
         }

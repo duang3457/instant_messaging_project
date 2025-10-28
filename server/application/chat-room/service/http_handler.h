@@ -43,9 +43,9 @@ public:
                 handler_ = std::make_shared<CWebSocketConn>(tcp_conn_);
                 handler_->setHeaders(headers);
             }else{
-            request_type_ = HTTP;
-            handler_ = std::make_shared<CHttpConn>(tcp_conn_);
-            handler_->setHeaders(headers);
+                request_type_ = HTTP;
+                handler_ = std::make_shared<CHttpConn>(tcp_conn_);
+                handler_->setHeaders(headers);
             }
         }
         handler_->OnRead(buf);

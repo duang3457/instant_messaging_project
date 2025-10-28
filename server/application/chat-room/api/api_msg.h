@@ -7,5 +7,8 @@ const constexpr int k_message_batch_size = 30;
 
 int ApiGetRoomHistory(Room &room, MessageBatch &message_batch, const int msg_count = k_message_batch_size);
 int ApiStoreMessage(string room_name, std::vector<Message> &msgs);
+int ApiStoreMessageTiered(string room_name, std::vector<Message> &msgs);
+int ApiBatchPersistMessages(int batch_size = 100);
+int ApiGetRoomHistoryTiered(Room &room, MessageBatch &message_batch, const int msg_count = k_message_batch_size);
 
 #endif
