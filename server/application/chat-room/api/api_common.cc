@@ -181,8 +181,6 @@ int ApiGetUserInfoById(const string &userid, string &username, string &avatar) {
         // 用户存在，获取用户名
         username = result_set->GetString("userName");
         avatar = result_set->GetString("avatarUrl");
-        
-        LOG_INFO << "Found user: userid=" << userid << ", username=" << username;
         ret = 0;
     } else {                        
         // 用户不存在

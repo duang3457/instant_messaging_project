@@ -175,117 +175,6 @@ std::string buildWebSocketFrame(const std::string& payload, uint8_t opcode = 0x0
     return frame;
 }
 
-void CWebSocketConn::OnRead(Buffer* buf)
-{
-    if (!handshake_completed_) {
-        // 处理 WebSocket 握手
-        std::string request(buf->retrieveAllAsString());
-        LOG_INFO << "request" << request;
-        LOG_INFO << "升级为websocket";
-        size_t key_start = request.find("Sec-WebSocket-Key: ");
-        // 后端基于Sec-WebSocket-Key: 计算一个Sec-WebSocket-Accept返回给前端
-
-        if (key_start != std::string::npos) {
-            key_start += 19;
-            size_t key_end = request.find("\r\n", key_start);
-            std::string Sec_WebSocket_Key = request.substr(key_start, key_end - key_start);
-            LOG_DEBUG << "Sec_WebSocket_Key: " << Sec_WebSocket_Key;
-
-            // 发 response 并标志完成
-            std::string response = generateWebSocketHandshakeResponse(Sec_WebSocket_Key);
-            send(response);
-            handshake_completed_ = true;
-
-            // 以上握手阶段结束
-            // 从URL中获取uid参数而不是从Cookie   
-            string url = request.substr(0, request.find("\r\n")); // 获取第一行HTTP请求行
-            string uid;
-            
-            // 提取URL中的uid参数
-            if (!url.empty()) {
-                uid = extractUidFromUrl(url);
-                LOG_INFO << "从URL中提取的uid = " << uid;
-            }
-            
-            string email;
-            if(uid.empty()) {
-                LOG_WARN << "uid参数为空" << ", uid.empty():" << uid.empty() << ", username_:" << username_;
-                // 关闭websocket
-                sendCloseFrame(1008, "uid validation failed");
-            }else {
-                // uid不为空，直接设置username为uid
-                userid_ = uid;  // 将uid字符串转换为整数后作为userId使用
-                // 校验成功
-                // 把连接加入 s_user_ws_conn_map
-                LOG_INFO << "uid validation ok, username_=" << username_ << ", userid_=" << userid_;
-                s_mtx_user_ws_conn_map_.lock();
-                s_user_ws_conn_map.insert({userid_, shared_from_this()});  // 同样userid连接可能已经存在了
-                s_mtx_user_ws_conn_map_.unlock();
-                // 订阅房间
-                std::vector<Room> &room_list = PubSubService::GetRoomList(); 
-                LOG_INFO << "开始为用户 " << userid_ << " 订阅 " << room_list.size() << " 个房间";
-                for(size_t i = 0; i < room_list.size(); i++) {
-                    rooms_map_.insert({room_list[i].room_id, room_list[i]});
-                    PubSubService::GetInstance().AddSubscriber(room_list[i].room_id, userid_);// 订阅对应的聊天室
-                    LOG_INFO << "用户 " << userid_ << " 已订阅房间: " << room_list[i].room_id << " (" << room_list[i].room_name << ")";
-                }
-                LOG_INFO << "用户 " << userid_ << " 房间订阅完成";
-                // 发送信息给 客户端  
-                // sendHelloMessage();
-            }
-        }else {
-            LOG_ERROR << "no Sec-WebSocket-Key";    
-        }
-    } else {
-        // 握手完成后的下一次请求
-        string request = buf->retrieveAllAsString();
-        // 原始帧字节打印出乱码，正常
-        // 客户端发来的负载被掩码：需要用 4 字节 mask key 逐字节还原：payload[i] ^= mask[i % 4]
-        // LOG_INFO << "client -> server: " << request;
-
-        //解析websocket的帧
-        WebSocketFrame frame =  parseWebSocketFrame(request);
-
-        LOG_INFO << "prase after: " << frame.payload_data;
-
-        if (frame.opcode == 0x01) { // 文本帧
-            //这里写消息处理代码
-            bool res;
-            Json::Value root;
-            Json::Reader jsonReader;
-            res = jsonReader.parse(frame.payload_data, root);
-            if (!res) {
-                LOG_ERROR << "parse login json failed ";
-                disconnect();
-                return ;
-            }
-            //获取type字段
-            string  type;
-            if (root["type"].isNull()) {
-                LOG_ERROR << "type null";
-                disconnect();
-                return;
-            }
-            type = root["type"].asString();
-            if(type == "hello") {
-                // 处理前端发送的hello消息
-                handleHelloMessage(root);
-            } else if(type == "clientMessages")  {
-                handleClientMessages(root);
-            } else if(type == "requestRoomHistory") {
-                handleRequestRoomHistory(root);
-            } else {
-                LOG_ERROR << "unknown type: " << type;
-            }
-        } else if(frame.opcode == 0x08) {  // 0x8 是否为关闭帧
-            LOG_INFO<< "Received close frame, closing connection...";
-            disconnect();
-        } else {
-            LOG_ERROR << "can't handle opcode " <<frame.opcode ;
-        }
-    }
-}
-
 
 // 发送 WebSocket 关闭帧
 void CWebSocketConn::sendCloseFrame(uint16_t code, const std::string& reason) {
@@ -366,7 +255,6 @@ int CWebSocketConn::sendHelloMessage() {
     }
 }
 
-// 处理客户端消息
 int CWebSocketConn::handleClientMessages(Json::Value &root) {
     try {
         std::string type = root["type"].asString();
@@ -547,6 +435,20 @@ int CWebSocketConn::handleRequestRoomHistory(Json::Value &root) {
     }
 }
 
+// 检查连接是否有效
+bool CWebSocketConn::IsConnected() const {
+    return tcp_conn_ && tcp_conn_->connected() && handshake_completed_;
+}
+
+// 发送消息帧
+void CWebSocketConn::SendMessage(const std::string& frame) {
+    if (IsConnected()) {
+        tcp_conn_->send(frame);
+    } else {
+        LOG_WARN << "Attempted to send message to disconnected WebSocket";
+    }
+}
+
 // 处理前端发送的hello消息
 int CWebSocketConn::handleHelloMessage(Json::Value &root) {
     try {
@@ -589,8 +491,8 @@ int CWebSocketConn::handleHelloMessage(Json::Value &root) {
                 int history_result = ApiGetRoomHistoryTiered(temp_room, message_batch, 20);
                 
                 if (history_result == 0 && !message_batch.messages.empty()) {
-                    LOG_INFO << "Loaded " << message_batch.messages.size() 
-                             << " history messages for room " << room_pair.second.room_id;
+                    // LOG_INFO << "Loaded " << message_batch.messages.size() 
+                    //          << " history messages for room " << room_pair.second.room_id;
                     
                     // 将消息按时间正序排列（最新消息在后面）
                     std::sort(message_batch.messages.begin(), message_batch.messages.end(),
@@ -658,16 +560,120 @@ int CWebSocketConn::handleHelloMessage(Json::Value &root) {
     }
 }
 
-// 检查连接是否有效
-bool CWebSocketConn::IsConnected() const {
-    return tcp_conn_ && tcp_conn_->connected() && handshake_completed_;
-}
+void CWebSocketConn::OnRead(Buffer* buf)
+{
+    if (!handshake_completed_) {
+        // 处理 WebSocket 握手
+        std::string request(buf->retrieveAllAsString());
+        LOG_INFO << "request" << request;
+        LOG_INFO << "升级为websocket";
+        size_t key_start = request.find("Sec-WebSocket-Key: ");
+        // 后端基于Sec-WebSocket-Key: 计算一个Sec-WebSocket-Accept返回给前端
 
-// 发送消息帧
-void CWebSocketConn::SendMessage(const std::string& frame) {
-    if (IsConnected()) {
-        tcp_conn_->send(frame);
+        if (key_start != std::string::npos) {
+            key_start += 19;
+            size_t key_end = request.find("\r\n", key_start);
+            std::string Sec_WebSocket_Key = request.substr(key_start, key_end - key_start);
+            LOG_DEBUG << "Sec_WebSocket_Key: " << Sec_WebSocket_Key;
+
+            // 发 response 并标志完成
+            std::string response = generateWebSocketHandshakeResponse(Sec_WebSocket_Key);
+            send(response);
+            handshake_completed_ = true;
+
+            // 以上握手阶段结束
+            // 从URL中获取uid参数而不是从Cookie   
+            string url = request.substr(0, request.find("\r\n")); // 获取第一行HTTP请求行
+            string uid;
+            
+            // 提取URL中的uid参数
+            if (!url.empty()) {
+                uid = extractUidFromUrl(url);
+                LOG_INFO << "从URL中提取的uid = " << uid;
+            }
+            
+            string email;
+            if(uid.empty()) {
+                LOG_WARN << "uid参数为空" << ", uid.empty():" << uid.empty() << ", username_:" << username_;
+                // 关闭websocket
+                sendCloseFrame(1008, "uid validation failed");
+            }else {
+                // uid不为空，直接设置username为uid
+                userid_ = uid;  // 将uid字符串转换为整数后作为userId使用
+                // 校验成功
+                // 把连接加入 s_user_ws_conn_map
+                LOG_INFO << "uid validation ok, username_=" << username_ << ", userid_=" << userid_;
+                s_mtx_user_ws_conn_map_.lock();
+                s_user_ws_conn_map.insert({userid_, shared_from_this()});  // 同样userid连接可能已经存在了
+                s_mtx_user_ws_conn_map_.unlock();
+                // 订阅房间
+                std::vector<Room> &room_list = PubSubService::GetRoomList(); 
+                LOG_INFO << "开始为用户 " << userid_ << " 订阅 " << room_list.size() << " 个房间";
+                for(size_t i = 0; i < room_list.size(); i++) {
+                    rooms_map_.insert({room_list[i].room_id, room_list[i]});
+                    PubSubService::GetInstance().AddSubscriber(room_list[i].room_id, userid_);// 订阅对应的聊天室
+                    // LOG_INFO << "用户 " << userid_ << " 已订阅房间: " << room_list[i].room_id << " (" << room_list[i].room_name << ")";
+                }
+                LOG_INFO << "用户 " << userid_ << " 房间订阅完成";
+                // 发送信息给 客户端  
+                // sendHelloMessage();
+            }
+        }else {
+            LOG_ERROR << "no Sec-WebSocket-Key";    
+        }
     } else {
-        LOG_WARN << "Attempted to send message to disconnected WebSocket";
+        // 握手完成后的下一次请求
+        string request = buf->retrieveAllAsString();
+        // 原始帧字节打印出乱码，正常
+        // 客户端发来的负载被掩码：需要用 4 字节 mask key 逐字节还原：payload[i] ^= mask[i % 4]
+        // LOG_INFO << "client -> server: " << request;
+
+        //解析websocket的帧
+        WebSocketFrame frame =  parseWebSocketFrame(request);
+
+        LOG_INFO << "prase after: " << frame.payload_data;
+
+        // 目前只有文本帧的处理
+        if (frame.opcode == 0x01) { // 文本帧
+            //这里写消息处理代码
+            bool res;
+            Json::Value root;
+            Json::Reader jsonReader;
+            res = jsonReader.parse(frame.payload_data, root);
+            if (!res) {
+                LOG_ERROR << "parse login json failed ";
+                disconnect();
+                return ;
+            }
+            //获取type字段
+            string type;
+            if (root["type"].isNull()) {
+                LOG_ERROR << "type null";
+                disconnect();
+                return;
+            }
+            type = root["type"].asString();
+            // ws的“路由转发”
+            // 初次握手之后，前端会发来一个hello，返回初始化数据
+            if(type == "hello") {
+                // 处理前端发送的hello消息
+                handleHelloMessage(root);
+            } 
+            // 用户每发一条消息，前端会发来一条clientMessages，广播给订阅了房间的所有人
+            else if(type == "clientMessages")  {  
+                handleClientMessages(root);
+            } 
+            // 用户向上翻，触发hasMore时，前端发来requestRoomHistory，返回房间历史数据
+            else if(type == "requestRoomHistory") {
+                handleRequestRoomHistory(root);
+            } else {
+                LOG_ERROR << "unknown type: " << type;
+            }
+        } else if(frame.opcode == 0x08) {  // 0x8 是否为关闭帧
+            LOG_INFO<< "Received close frame, closing connection...";
+            disconnect();
+        } else {
+            LOG_ERROR << "can't handle opcode " <<frame.opcode ;
+        }
     }
 }

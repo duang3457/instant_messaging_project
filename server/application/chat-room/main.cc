@@ -322,7 +322,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    check_redis_ready(cache_manager);
+    // check_redis_ready(cache_manager);
 
     // 初始化mysql连接池
     CDBManager::SetConfPath(str_conf);   //设置配置文件路径
@@ -332,7 +332,7 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    check_mysql_ready(db_manager);
+    // check_mysql_ready(db_manager);
 
     int num_event_loops = 0; 
     int num_threads = 0;

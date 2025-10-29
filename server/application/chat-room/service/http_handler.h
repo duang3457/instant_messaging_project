@@ -33,13 +33,14 @@ public:
         if(request_type_ == UNKNOWN) {
             const char* in_buf = buf->peek();
             int32_t len = buf->readableBytes();
-            std::cout << "=====================" << std::endl;
-            std::cout << "in_buf: " << in_buf << std::endl;
-            std::cout << "=====================" << std::endl;
+            // std::cout << "=====================" << std::endl;
+            // std::cout << "in_buf: " << in_buf << std::endl;
+            // std::cout << "=====================" << std::endl;
 
             auto headers = parseHttpHeaders(in_buf, len);
             if(isWebSocketRequest(headers)){
                 request_type_ = WEBSOCKET;
+                LOG_INFO << "这是一个ws";
                 handler_ = std::make_shared<CWebSocketConn>(tcp_conn_);
                 handler_->setHeaders(headers);
             }else{
@@ -74,7 +75,7 @@ private:
         }
         // std::cout << "=====================" << std::endl;
         // for(const auto& [key, value] : headers){
-        //     std::cout << key << ": " << value << std::endl;
+        //     LOG_INFO << key << ": " << value;
         // }
         // std::cout << "=====================" << std::endl;
         return headers;

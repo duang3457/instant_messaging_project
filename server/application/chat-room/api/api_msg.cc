@@ -252,7 +252,7 @@ int ApiGetRoomHistoryTiered(Room &room, MessageBatch &message_batch, const int m
     }
 
     // 2. Redis中消息不足，从MySQL补充历史消息
-    LOG_INFO << "Redis messages insufficient, fetching from MySQL";
+    // LOG_INFO << "Redis messages insufficient, fetching from MySQL";
     
     CDBManager *db_manager = CDBManager::getInstance();
     CDBConn *db_conn = db_manager->GetDBConn("chatroom_slave"); // 使用从库读取
@@ -285,8 +285,8 @@ int ApiGetRoomHistoryTiered(Room &room, MessageBatch &message_batch, const int m
             
             message_batch.messages.push_back(msg);
         }
-        LOG_INFO << "Got additional " << message_batch.messages.size() - (redis_result == 0 ? message_batch.messages.size() : 0) 
-                 << " messages from MySQL";
+        // LOG_INFO << "Got additional " << message_batch.messages.size() - (redis_result == 0 ? message_batch.messages.size() : 0) 
+        //          << " messages from MySQL";
     }
 
     // 设置是否还有更多消息

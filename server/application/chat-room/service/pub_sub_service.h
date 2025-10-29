@@ -41,6 +41,7 @@ public:
 using RoomTopicPtr = std::shared_ptr<RoomTopic>;
 
 using PubSubCallback = std::function<void(const std::unordered_set<string> user_ids)>;
+
 class PubSubService
 {
 public:
@@ -83,7 +84,7 @@ public:
         }
         room_topic_map_[room_id]->DeleteSubscriber(userid);
     }
-    void PublishMessage(const string &room_id,  PubSubCallback callback) {
+    void PublishMessage(const string &room_id, PubSubCallback callback) {
         std::unordered_set<string> user_ids;
         {
             std::lock_guard<std::mutex> lck(room_topic_map_mutex_);

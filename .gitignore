@@ -88,5 +88,9 @@ vgcore.*
 core
 core.*
 
+# rpc
+**.pb.**
+
 # deploy
 deploy/
+server.tar
