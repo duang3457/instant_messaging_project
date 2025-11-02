@@ -19,7 +19,6 @@ string RandomString(const int len) /*参数为字符串的长度*/
 } 
 
 int ApiGetUsernameByToken(string &username, string &token) {
-    int ret = 0;
     CacheManager *cache_manager = CacheManager::getInstance();
     CacheConn *cache_conn = cache_manager->GetCacheConn("token");
     AUTO_REL_CACHECONN(cache_manager, cache_conn);

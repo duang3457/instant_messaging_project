@@ -26,6 +26,7 @@ AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_SOURCE_DIR} MAIN_LIST)
 ADD_EXECUTABLE(logic  ${MAIN_LIST} ${SERVICE_LIST} ${BASE_LIST} ${API_LIST} ${MYSQL_LIST} ${REDIS_LIST} )
 
 TARGET_LINK_LIBRARIES(logic 
+    chatroom_proto   # 链接共享的 proto 库
     muduo_net 
     muduo_base 
     jsoncpp 
@@ -35,5 +36,4 @@ TARGET_LINK_LIBRARIES(logic
     crypto 
     rdkafka  
     rdkafka++ 
-    ${_PROTOBUF_LIBPROTOBUF}
 )

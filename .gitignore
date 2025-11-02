@@ -90,6 +90,7 @@ core.*
 
 # rpc
 **.pb.**
+backup_proto/
 
 # deploy
 deploy/

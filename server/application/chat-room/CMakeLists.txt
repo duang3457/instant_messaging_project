@@ -73,6 +73,7 @@ LINK_DIRECTORIES(/usr/lib/x86_64-linux-gnu)
 # 链接库（注意顺序很重要，被依赖的库要放在后面）
 if(ENABLE_RPC)
     TARGET_LINK_LIBRARIES(chat-room 
+        chatroom_proto   # 链接共享的 proto 库
         muduo_net 
         muduo_base
         jsoncpp 
@@ -80,10 +81,7 @@ if(ENABLE_RPC)
         uuid 
         ssl 
         crypto
-        pthread
-        ${_REFLECTION}
-        ${_GRPC_GRPCPP}
-        ${_PROTOBUF_LIBPROTOBUF})
+        pthread)
 else()
     TARGET_LINK_LIBRARIES(chat-room 
         muduo_net 

@@ -19,6 +19,7 @@ using namespace muduo::net;
 // gRPC客户端类
 class CometClient {
 public:
+    // grpc建立标准流程
     CometClient(const std::string& server_address) {
         auto channel = grpc::CreateChannel(
             server_address, grpc::InsecureChannelCredentials());
@@ -29,7 +30,7 @@ public:
         // 创建广播请求
         ChatRoom::Comet::BroadcastRoomReq request;
         request.set_roomid(roomId); //房间ID
-
+ 
         // 创建并设置Proto消息
         ChatRoom::Protocol::Proto *proto = request.mutable_proto();
         proto->set_ver(1);        // 设置版本号
@@ -54,7 +55,7 @@ private:
     std::unique_ptr<ChatRoom::Comet::Comet::Stub> stub_;
 };
 
-// 管理与chatroom6的连接
+// 管理与chatroom的连接
 class CometManager {
 public:
     static CometManager& getInstance() {
@@ -64,7 +65,7 @@ public:
 
     CometClient* getClient() {
         if (!client_) {
-            client_ = std::make_unique<CometClient>("localhost:50051");  // chatroom6的地址
+            client_ = std::make_unique<CometClient>("localhost:50051");  // chatroom的地址
         }
         return client_.get();
     }

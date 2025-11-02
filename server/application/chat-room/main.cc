@@ -2,6 +2,7 @@
 #include <signal.h>
 #include <mutex>
 #include <atomic>
+#include <thread>
 
 #include "muduo/net/EventLoop.h"
 #include "muduo/net/TcpServer.h"
@@ -13,6 +14,11 @@
 #include "cache_pool.h"
 #include "pub_sub_service.h"
 #include "api_msg.h"
+
+#ifdef ENABLE_RPC
+#include <grpcpp/grpcpp.h>
+#include "comet_service.h"
+#endif
 
 std::map<uint32_t, HttpHandlerPtr> s_http_handler_map;
 
@@ -304,14 +310,22 @@ int main(int argc, char* argv[])
     
     CConfigFileReader config_file(str_conf); 
 
-    char *str_log_level =  config_file.GetConfigName("log_level");  
-    muduo::Logger::LogLevel log_level = static_cast<muduo::Logger::LogLevel>(atoi(str_log_level));
-    muduo::Logger::setLogLevel(log_level);
+    char *str_log_level =  config_file.GetConfigName("log_level");
+    if (str_log_level && strlen(str_log_level) > 0) {
+        muduo::Logger::LogLevel log_level = static_cast<muduo::Logger::LogLevel>(atoi(str_log_level));
+        muduo::Logger::setLogLevel(log_level);
+    } else {
+        LOG_WARN << "log_level not configured, using default";
+    }
 
     const char *http_bind_ip = "0.0.0.0";
     uint16_t http_bind_port = 8081;
-    char *str_http_bind_port = config_file.GetConfigName("http_bind_port");  
-    http_bind_port = atoi(str_http_bind_port);
+    char *str_http_bind_port = config_file.GetConfigName("http_bind_port");
+    if (str_http_bind_port && strlen(str_http_bind_port) > 0) {
+        http_bind_port = atoi(str_http_bind_port);
+    } else {
+        LOG_WARN << "http_bind_port not configured, using default: " << http_bind_port;
+    }
 
     // 初始化redis连接池，新建了token和msg连接池
     CacheManager::SetConfPath(str_conf);
@@ -346,11 +360,43 @@ int main(int argc, char* argv[])
     // 启动消息持久化定时器
     start_message_persistence_timer(&loop);
     
+#ifdef ENABLE_RPC
+    // 启动 gRPC 服务器
+    std::string grpc_server_address("0.0.0.0:50051");
+    
+    // 从配置文件读取 gRPC 端口（可选）
+    char *str_grpc_port = config_file.GetConfigName("grpc_port");
+    if (str_grpc_port && strlen(str_grpc_port) > 0) {
+        grpc_server_address = std::string("0.0.0.0:") + str_grpc_port;
+    }
+    
+    ChatRoom::CometServiceImpl grpc_service;
+    grpc::ServerBuilder builder;
+    builder.AddListeningPort(grpc_server_address, grpc::InsecureServerCredentials());
+    builder.RegisterService(&grpc_service);
+    
+    std::unique_ptr<grpc::Server> grpc_server(builder.BuildAndStart());
+    LOG_INFO << "gRPC Server 启动成功，监听地址: " << grpc_server_address;
+    
+    // 在单独的线程中运行 gRPC Server
+    std::thread grpc_thread([&grpc_server]() {
+        grpc_server->Wait();
+    });
+#endif
+    
     server.start();
     LOG_INFO << "服务器启动完成，监听地址: " << http_bind_ip << ":" << http_bind_port;
     LOG_INFO << "消息持久化定时器已启动";
     
     loop.loop(); 
+
+#ifdef ENABLE_RPC
+    // 关闭 gRPC 服务器
+    grpc_server->Shutdown();
+    if (grpc_thread.joinable()) {
+        grpc_thread.join();
+    }
+#endif
 
     return 0;
 }

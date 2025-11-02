@@ -9,4 +9,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -g")
 
 # 添加子目录
+ADD_SUBDIRECTORY(proto)        # 先构建共享的 proto 库
 ADD_SUBDIRECTORY(application)

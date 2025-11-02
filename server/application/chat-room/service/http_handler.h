@@ -34,7 +34,7 @@ public:
             const char* in_buf = buf->peek();
             int32_t len = buf->readableBytes();
             // std::cout << "=====================" << std::endl;
-            // std::cout << "in_buf: " << in_buf << std::endl;
+            // LOG_INFO << "in_buf: " << in_buf;
             // std::cout << "=====================" << std::endl;
 
             auto headers = parseHttpHeaders(in_buf, len);

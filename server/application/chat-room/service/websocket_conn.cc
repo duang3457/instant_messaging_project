@@ -451,6 +451,7 @@ void CWebSocketConn::SendMessage(const std::string& frame) {
 
 // 处理前端发送的hello消息
 int CWebSocketConn::handleHelloMessage(Json::Value &root) {
+    (void)root;
     try {
         LOG_INFO << "Handling hello message from client, userid_=" << userid_;
         

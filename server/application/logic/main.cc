@@ -59,10 +59,7 @@ private:
         string msg = buf->retrieveAllAsString();
         LOG_INFO << "Received message: " << msg;
         // 解析HTTP请求
-        if (msg.find("POST /logic/login") != string::npos) {
-            handleLogin(conn, msg);
-        }
-        else if (msg.find("POST /logic/send") != string::npos) {
+        if (msg.find("POST /logic/send") != string::npos) {
             handleSend(conn, msg);
         }
         else {
@@ -71,15 +68,6 @@ private:
             response += "Content-Length: 0\r\n\r\n";
             conn->send(response);
         }
-    }
-
-    void handleLogin(const TcpConnectionPtr& conn, const string& request) {
-        // 简单的登录处理
-        string response = "HTTP/1.1 200 OK\r\n";
-        response += "Content-Type: application/json\r\n";
-        response += "Content-Length: 25\r\n\r\n";
-        response += "{\"status\": \"logged in\"}\r\n";
-        conn->send(response);
     }
 
     void handleSend(const TcpConnectionPtr& conn, const string& request) {
@@ -187,7 +175,7 @@ private:
         std::string httpResponse = wrapJsonInHttpResponse(jsonStr);
 
         conn->send(httpResponse);
-        LOG_INFO << "handleSend   successfully";
+        LOG_INFO << "handleSend successfully";
         conn->shutdown();
     }
 

@@ -68,6 +68,7 @@ endif()
 
 # 链接库的顺序很重要
 TARGET_LINK_LIBRARIES(job 
+    chatroom_proto      # 链接共享的 proto 库
     muduo_net
     muduo_base
     jsoncpp 
@@ -75,8 +76,5 @@ TARGET_LINK_LIBRARIES(job
     uuid     
     rdkafka 
     rdkafka++ 
-    ${_REFLECTION}
-    ${_GRPC_GRPCPP}
-    ${_PROTOBUF_LIBPROTOBUF}
     pthread
 )

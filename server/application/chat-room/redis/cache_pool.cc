@@ -841,7 +841,6 @@ END:
 // XREVRANGE 程序员老廖 + -
 bool  CacheConn::GetXrevrange(const string & key, 
     const string start, const string end, int count, std::vector<std::pair<string, string>> &msgs) {
-    bool ret = false;
     if (Init()) {
         return false;
     }    
@@ -894,7 +893,6 @@ bool  CacheConn::GetXrevrange(const string & key,
 
 bool CacheConn::Xadd(const string& key,   string& id, const std::vector<std::pair<string, string>>& field_value_pairs)
 {
-    bool ret = false;
     if (Init()) {
         return false;
     }

@@ -201,8 +201,7 @@ int CDBConn::Init() {
 
         return 1;
     }
-
-    int reconnect = 1;
+    
     // mysql_options(mysql_, MYSQL_OPT_RECONNECT,  &reconnect); // 配合mysql_ping实现自动重连
     mysql_options(mysql_, MYSQL_SET_CHARSET_NAME, "utf8mb4"); // utf8mb4和utf8区别
 

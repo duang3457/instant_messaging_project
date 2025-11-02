@@ -58,6 +58,7 @@ int CHttpParserWrapper::OnHeaderField(http_parser *parser, const char *at,
             ((CHttpParserWrapper *)obj)->SetReadReferer(true);
         }
     }
+    (void)length;
 
     if (!((CHttpParserWrapper *)obj)->HasReadForwardIP()) {
         if (strncasecmp(at, "X-Forwarded-For", 15) == 0) {
@@ -140,6 +141,7 @@ int CHttpParserWrapper::OnBody(http_parser *parser, const char *at,
 }
 
 int CHttpParserWrapper::OnMessageComplete(http_parser *parser, void *obj) {
+    (void)parser;
     ((CHttpParserWrapper *)obj)->SetReadAll();
     return 0;
 }
