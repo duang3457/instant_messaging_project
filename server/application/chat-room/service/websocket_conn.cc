@@ -11,6 +11,8 @@
 #include "base64.h"
 #include "api_common.h"
 #include "api_msg.h"
+#include "monitoring/metrics_collector.h"
+#include "http_client.h"
 using namespace muduo;
 using namespace muduo::net;
 
@@ -136,10 +138,14 @@ CWebSocketConn::CWebSocketConn(const TcpConnectionPtr& conn)
         : CHttpConn(conn)
 {
     LOG_INFO << "构造CWebSocketConn";
+    // 增加活跃 WebSocket 连接数
+    MetricsCollector::GetInstance().IncrementActiveConnections();
 }
 
 CWebSocketConn::~CWebSocketConn() {
     LOG_INFO << "析构CWebSocketConn";
+    // 减少活跃 WebSocket 连接数
+    MetricsCollector::GetInstance().DecrementActiveConnections();
 }
 
 // 构造 WebSocket 数据帧
@@ -256,6 +262,12 @@ int CWebSocketConn::sendHelloMessage() {
 }
 
 int CWebSocketConn::handleClientMessages(Json::Value &root) {
+    // 创建延迟计时器
+    MetricsCollector::LatencyTimer timer(MetricsCollector::GetInstance(), "/ws/clientMessages");
+    
+    // 增加请求计数（用于 QPS）
+    MetricsCollector::GetInstance().IncrementRequestCount("/ws/clientMessages", "WS");
+    
     try {
         std::string type = root["type"].asString();
         LOG_INFO << "Handling client message type: " << type;
@@ -267,6 +279,7 @@ int CWebSocketConn::handleClientMessages(Json::Value &root) {
             // 检查必要字段
             if (payload["content"].isNull() || payload["roomId"].isNull()) {
                 LOG_ERROR << "Missing required fields: content or roomId";
+                MetricsCollector::GetInstance().IncrementErrorCount("missing_fields", "/ws/clientMessages");
                 return -1;
             }
             
@@ -290,8 +303,12 @@ int CWebSocketConn::handleClientMessages(Json::Value &root) {
             int store_result = ApiStoreMessageTiered(room_id, msgs);
             if (store_result != 0) {
                 LOG_ERROR << "Failed to store message for room: " << room_id;
+                MetricsCollector::GetInstance().IncrementErrorCount("redis_store_failed", "/ws/clientMessages");
                 return -1;
             }
+            
+            // 记录 Redis 操作成功
+            MetricsCollector::GetInstance().IncrementRedisOp("store_message", true);
             
             // 获取存储后的消息ID
             msg.id = msgs[0].id;
@@ -359,6 +376,8 @@ int CWebSocketConn::handleClientMessages(Json::Value &root) {
                     
                     // 构建WebSocket帧
                     string frame = buildWebSocketFrame(broadcast_json);
+                    
+                    int push_count = 0;  // 统计实际推送数量
                     // 向房间内的所有用户发送消息（除了发送者自己）
                     for (const auto& user_id : user_ids) {
                         // 跳过发送者自己，避免重复发送
@@ -374,12 +393,55 @@ int CWebSocketConn::handleClientMessages(Json::Value &root) {
                             if (ws_conn && ws_conn->IsConnected()) {
                                 ws_conn->SendMessage(frame);
                                 LOG_INFO << "Sent message to user: " << user_id;
+                                push_count++;
                             }
                         }
+                    }
+                    
+                    // 记录 WebSocket 推送指标
+                    for (int i = 0; i < push_count; i++) {
+                        MetricsCollector::GetInstance().IncrementWebSocketPush(room_id);
                     }
                 });
             
             LOG_INFO << "Message broadcast initiated for room " << room_id;
+            
+            // ========== 混合模式：同时发送到 Logic → Kafka → Job ==========
+            // 这部分用于离线推送、跨服务器同步和持久化
+            // 异步发送，不阻塞当前请求
+            
+            // 构造发送到 Logic 的请求
+            Json::Value logic_request;
+            logic_request["roomId"] = room_id;
+            logic_request["userId"] = std::stoi(userid_);  // Logic 期望 int 类型
+            logic_request["userName"] = broadcast_username.empty() ? username_ : broadcast_username;
+            
+            Json::Value messages_array(Json::arrayValue);
+            Json::Value message_obj;
+            message_obj["content"] = content;
+            messages_array.append(message_obj);
+            logic_request["messages"] = messages_array;
+            
+            Json::StreamWriterBuilder logic_writer;
+            logic_writer.settings_["indentation"] = "";
+            std::string logic_json = Json::writeString(logic_writer, logic_request);
+            
+            // 异步发送到 Logic 服务（不阻塞）
+            auto http_client = std::make_shared<HttpClient>(tcp_conn_->getLoop());
+            http_client->AsyncPost("localhost", 8090, "/logic/send", logic_json,
+                [room_id, userid = userid_](bool success, const std::string& response) {
+                    if (success) {
+                        LOG_INFO << "Successfully sent message to Logic service for room " << room_id;
+                        MetricsCollector::GetInstance().IncrementCounter("logic_forward", "success");
+                    } else {
+                        LOG_WARN << "Failed to send message to Logic service for room " << room_id 
+                                 << ", user " << userid << ". Response: " << response;
+                        MetricsCollector::GetInstance().IncrementCounter("logic_forward", "failed");
+                    }
+                });
+            
+            LOG_DEBUG << "Async request to Logic service initiated";
+            // ========== 混合模式结束 ==========
             
         } else if (type == "join_room") {
             // 处理加入房间

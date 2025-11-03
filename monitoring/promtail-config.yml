@@ -1,0 +1,79 @@
+# Promtail 配置文件 - 日志采集器
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # ==================== Comet 服务日志 ====================
+  - job_name: comet
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: comet
+          service: comet
+          component: websocket
+          __path__: /var/log/chatroom/comet.log*
+    
+    pipeline_stages:
+      # 解析日志级别
+      - regex:
+          expression: '^\[(?P<level>[A-Z]+)\]'
+      
+      # 提取时间戳
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+      
+      # 添加标签
+      - labels:
+          level:
+
+  # ==================== Logic 服务日志 ====================
+  - job_name: logic
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: logic
+          service: logic
+          component: http-api
+          __path__: /var/log/chatroom/logic.log*
+    
+    pipeline_stages:
+      - regex:
+          expression: '^\[(?P<level>[A-Z]+)\]'
+      - labels:
+          level:
+
+  # ==================== Job 服务日志 ====================
+  - job_name: job
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: job
+          service: job
+          component: kafka-consumer
+          __path__: /var/log/chatroom/job.log*
+    
+    pipeline_stages:
+      - regex:
+          expression: '^\[(?P<level>[A-Z]+)\]'
+      - labels:
+          level:
+
+  # ==================== 系统日志（可选）====================
+  # - job_name: system
+  #   static_configs:
+  #     - targets:
+  #         - localhost
+  #       labels:
+  #         job: system
+  #         __path__: /var/log/syslog

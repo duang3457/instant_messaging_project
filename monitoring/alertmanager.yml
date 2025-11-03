@@ -1,0 +1,112 @@
+# Alertmanager 配置文件
+global:
+  resolve_timeout: 5m
+  # SMTP 配置（邮件告警）
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'alertmanager@example.com'
+  smtp_auth_username: 'your_email@example.com'
+  smtp_auth_password: 'your_password'
+  smtp_require_tls: true
+
+# 告警路由配置
+route:
+  # 默认接收器
+  receiver: 'default'
+  
+  # 分组配置
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s       # 收到告警后等待10秒，合并相同组的告警
+  group_interval: 10s   # 同一组告警再次发送的间隔
+  repeat_interval: 1h   # 重复告警的间隔（1小时）
+
+  # 子路由规则
+  routes:
+    # 严重告警 - 立即发送到多个渠道
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 5s
+      repeat_interval: 10m
+    
+    # 警告级别 - 发送到钉钉
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 30s
+      repeat_interval: 30m
+    
+    # 信息级别 - 只记录不发送
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+      group_wait: 1m
+      repeat_interval: 2h
+
+# 接收器配置
+receivers:
+  # 默认接收器
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook'  # 自定义 webhook
+        send_resolved: true
+
+  # 严重告警 - 多渠道通知
+  - name: 'critical-alerts'
+    # 邮件通知
+    email_configs:
+      - to: 'ops-team@example.com'
+        headers:
+          Subject: '【严重】聊天室系统告警'
+        html: |
+          <h2>告警详情</h2>
+          <p><b>告警名称:</b> {{ .GroupLabels.alertname }}</p>
+          <p><b>服务:</b> {{ .GroupLabels.service }}</p>
+          <p><b>严重程度:</b> {{ .CommonLabels.severity }}</p>
+          <p><b>描述:</b> {{ range .Alerts }}{{ .Annotations.description }}{{ end }}</p>
+    
+    # 钉钉通知
+    webhook_configs:
+      - url: 'https://oapi.dingtalk.com/robot/send?access_token=YOUR_DINGTALK_TOKEN'
+        send_resolved: true
+    
+    # 企业微信通知
+    # wechat_configs:
+    #   - corp_id: 'YOUR_CORP_ID'
+    #     to_user: '@all'
+    #     agent_id: 'YOUR_AGENT_ID'
+    #     api_secret: 'YOUR_API_SECRET'
+
+  # 警告级别告警
+  - name: 'warning-alerts'
+    webhook_configs:
+      # 钉钉 Webhook
+      - url: 'https://oapi.dingtalk.com/robot/send?access_token=YOUR_DINGTALK_TOKEN'
+        send_resolved: true
+        http_config:
+          tls_config:
+            insecure_skip_verify: true
+
+  # 信息级别告警
+  - name: 'info-alerts'
+    webhook_configs:
+      - url: 'http://localhost:5001/info-webhook'
+        send_resolved: true
+
+# 抑制规则（避免告警风暴）
+inhibit_rules:
+  # 如果服务已经下线，抑制该服务的其他告警
+  - source_match:
+      severity: 'critical'
+      alertname: 'ServiceDown'
+    target_match:
+      severity: 'warning'
+    equal: ['service', 'instance']
+  
+  # 如果有高错误率告警，抑制单个错误告警
+  - source_match:
+      severity: 'critical'
+      alertname: 'HighErrorRate'
+    target_match:
+      severity: 'warning'
+      alertname: 'HighErrorCount'
+    equal: ['service']

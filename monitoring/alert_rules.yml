@@ -1,0 +1,187 @@
+# Prometheus 告警规则配置
+groups:
+  # ==================== 服务可用性告警 ====================
+  - name: service_availability
+    interval: 30s
+    rules:
+      # 服务下线告警
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务 {{ $labels.service }} 不可用"
+          description: "服务 {{ $labels.service }} (instance {{ $labels.instance }}) 已经下线超过 1 分钟"
+
+  # ==================== QPS 告警 ====================
+  - name: qps_alerts
+    interval: 30s
+    rules:
+      # QPS 过高告警
+      - alert: HighQPS
+        expr: rate(http_requests_total[1m]) > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} QPS 过高"
+          description: "服务 {{ $labels.service }} 的 QPS 达到 {{ $value | humanize }}/s，持续 2 分钟"
+
+      # QPS 突增告警（与前5分钟相比增长50%）
+      - alert: QPSSurge
+        expr: |
+          (rate(http_requests_total[1m]) - rate(http_requests_total[5m])) 
+          / rate(http_requests_total[5m]) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} QPS 突增"
+          description: "服务 {{ $labels.service }} 的 QPS 在 1 分钟内增长超过 50%"
+
+  # ==================== 延迟告警 ====================
+  - name: latency_alerts
+    interval: 30s
+    rules:
+      # P99 延迟过高告警
+      - alert: HighP99Latency
+        expr: |
+          histogram_quantile(0.99, 
+            rate(http_request_duration_microseconds_bucket[5m])
+          ) > 1000000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} P99 延迟过高"
+          description: "服务 {{ $labels.service }} 端点 {{ $labels.endpoint }} 的 P99 延迟达到 {{ $value | humanize }}μs (>1秒)"
+
+      # P95 延迟告警
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(0.95, 
+            rate(http_request_duration_microseconds_bucket[5m])
+          ) > 500000
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.service }} P95 延迟较高"
+          description: "服务 {{ $labels.service }} 端点 {{ $labels.endpoint }} 的 P95 延迟达到 {{ $value | humanize }}μs (>500ms)"
+
+  # ==================== 错误率告警 ====================
+  - name: error_rate_alerts
+    interval: 30s
+    rules:
+      # 错误率过高告警
+      - alert: HighErrorRate
+        expr: |
+          (rate(errors_total[5m]) / rate(http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} 错误率过高"
+          description: "服务 {{ $labels.service }} 的错误率达到 {{ $value | humanizePercentage }}，持续 2 分钟"
+
+      # 错误数量告警
+      - alert: HighErrorCount
+        expr: rate(errors_total[1m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} 错误数量过多"
+          description: "服务 {{ $labels.service }} 错误类型 {{ $labels.error_type }} 在 1 分钟内发生 {{ $value | humanize }} 次错误"
+
+  # ==================== 连接数告警 ====================
+  - name: connection_alerts
+    interval: 30s
+    rules:
+      # 连接数过高告警
+      - alert: HighConnectionCount
+        expr: active_connections > 10000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} 连接数过高"
+          description: "服务 {{ $labels.service }} 的活跃连接数达到 {{ $value }}，可能需要扩容"
+
+      # 连接数突降告警（可能是服务故障）
+      - alert: ConnectionDrop
+        expr: |
+          (active_connections - active_connections offset 5m) 
+          / active_connections offset 5m < -0.5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} 连接数突降"
+          description: "服务 {{ $labels.service }} 的连接数在 5 分钟内下降超过 50%，当前 {{ $value }}"
+
+  # ==================== Kafka 告警 ====================
+  - name: kafka_alerts
+    interval: 30s
+    rules:
+      # Kafka 消息积压告警
+      - alert: KafkaLag
+        expr: |
+          (kafka_messages_produced_total - kafka_messages_consumed_total) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka topic {{ $labels.topic }} 消息积压"
+          description: "Kafka topic {{ $labels.topic }} 有 {{ $value }} 条消息未消费"
+
+  # ==================== WebSocket 告警 ====================
+  - name: websocket_alerts
+    interval: 30s
+    rules:
+      # WebSocket 推送失败率告警
+      - alert: HighWebSocketPushFailure
+        expr: rate(websocket_messages_pushed_total[5m]) < 0.95 * rate(kafka_messages_consumed_total[5m])
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket 推送成功率低"
+          description: "WebSocket 消息推送成功率低于 95%"
+
+  # ==================== gRPC 告警 ====================
+  - name: grpc_alerts
+    interval: 30s
+    rules:
+      # gRPC 调用失败率告警
+      - alert: HighGrpcFailureRate
+        expr: |
+          sum(rate(grpc_calls_total{status="failure"}[5m])) by (service, method)
+          / 
+          sum(rate(grpc_calls_total[5m])) by (service, method) 
+          > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "gRPC {{ $labels.method }} 调用失败率过高"
+          description: "gRPC 方法 {{ $labels.method }} 失败率达到 {{ $value | humanizePercentage }}"
+
+  # ==================== Redis 告警 ====================
+  - name: redis_alerts
+    interval: 30s
+    rules:
+      # Redis 操作失败率告警
+      - alert: HighRedisFailureRate
+        expr: |
+          sum(rate(redis_operations_total{status="failure"}[5m])) by (service, operation)
+          / 
+          sum(rate(redis_operations_total[5m])) by (service, operation) 
+          > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis {{ $labels.operation }} 操作失败率过高"
+          description: "Redis 操作 {{ $labels.operation }} 失败率达到 {{ $value | humanizePercentage }}"

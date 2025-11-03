@@ -1,0 +1,126 @@
+{
+  "dashboard": {
+    "title": "聊天室系统监控 - Overview",
+    "tags": ["chatroom", "overview"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "QPS (每秒请求数)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total[1m])) by (service)",
+            "legendFormat": "{{service}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "错误率",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "(sum(rate(errors_total[5m])) by (service) / sum(rate(http_requests_total[5m])) by (service)) * 100",
+            "legendFormat": "{{service}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 1, "color": "yellow"},
+                {"value": 5, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "P99 延迟 (微秒)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_microseconds_bucket[5m])) by (le, service, endpoint))",
+            "legendFormat": "{{service}} - {{endpoint}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "µs",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "活跃连接数",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "active_connections{service=\"comet\"}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 5000, "color": "yellow"},
+                {"value": 10000, "color": "red"}
+              ]
+            },
+            "max": 15000
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Kafka 消息流",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(kafka_messages_produced_total[1m])",
+            "legendFormat": "生产 - {{service}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(kafka_messages_consumed_total[1m])",
+            "legendFormat": "消费 - {{service}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "msgps",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      }
+    ]
+  }
+}

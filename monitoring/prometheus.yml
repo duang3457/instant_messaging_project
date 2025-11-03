@@ -1,0 +1,93 @@
+# Prometheus 配置文件
+# 全局配置
+global:
+  scrape_interval: 15s      # 每15秒抓取一次指标
+  evaluation_interval: 15s  # 每15秒评估一次告警规则
+  external_labels:
+    cluster: 'chatroom'
+    environment: 'production'
+
+# 告警规则文件
+rule_files:
+  - '/etc/prometheus/alert_rules.yml'
+
+# Alertmanager 配置
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'alertmanager:9093'
+
+# 抓取配置
+scrape_configs:
+  # ==================== Prometheus 自监控 ====================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # ==================== Comet 服务监控 ====================
+  - job_name: 'comet'
+    static_configs:
+      - targets: ['host.docker.internal:9091']  # Docker 访问宿主机
+        labels:
+          service: 'comet'
+          component: 'websocket'
+          tier: 'frontend'
+    # 健康检查
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: host.docker.internal:9091
+
+  # ==================== Logic 服务监控 ====================
+  - job_name: 'logic'
+    static_configs:
+      - targets: ['host.docker.internal:9092']
+        labels:
+          service: 'logic'
+          component: 'http-api'
+          tier: 'backend'
+
+  # ==================== Job 服务监控 ====================
+  - job_name: 'job'
+    static_configs:
+      - targets: ['host.docker.internal:9093']
+        labels:
+          service: 'job'
+          component: 'kafka-consumer'
+          tier: 'worker'
+
+  # ==================== 节点监控（可选）====================
+  # 如果需要监控系统资源（CPU、内存、磁盘等），启用 node_exporter
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9100']
+  #       labels:
+  #         service: 'node-exporter'
+
+  # ==================== Kafka 监控（可选）====================
+  # 如果需要监控 Kafka，可以使用 kafka_exporter
+  # - job_name: 'kafka'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9308']
+  #       labels:
+  #         service: 'kafka'
+
+  # ==================== Redis 监控（可选）====================
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9121']
+  #       labels:
+  #         service: 'redis'
+
+  # ==================== MySQL 监控（可选）====================
+  # - job_name: 'mysql'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9104']
+  #       labels:
+  #         service: 'mysql'

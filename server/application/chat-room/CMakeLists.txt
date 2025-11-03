@@ -6,6 +6,7 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/mysql)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/redis)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/service)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/rpc)
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/monitoring)
 
 # 系统库包含目录
 INCLUDE_DIRECTORIES(/usr/include/mysql)
@@ -18,19 +19,24 @@ AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/mysql MYSQL_LIST)
 AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/redis REDIS_LIST)
 AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/service SERVICE_LIST)
 AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/rpc RPC_LIST)
+AUX_SOURCE_DIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/monitoring MONITORING_LIST)
 
 # 手动添加md5.cc（如果AUX_SOURCE_DIRECTORY没有找到）
 set(BASE_LIST ${BASE_LIST} ${CMAKE_CURRENT_SOURCE_DIR}/base/md5.cc)
+
+# Prometheus 监控库
+find_package(prometheus-cpp CONFIG REQUIRED)
+message(STATUS "Using prometheus-cpp")
 
 # 创建可执行文件
 if(ENABLE_RPC)
     ADD_EXECUTABLE(chat-room main.cc  ${SERVICE_LIST} 
         ${BASE_LIST} ${API_LIST} ${MYSQL_LIST}
-        ${REDIS_LIST} ${RPC_LIST})
+        ${REDIS_LIST} ${RPC_LIST} ${MONITORING_LIST})
 else()
     ADD_EXECUTABLE(chat-room main.cc  ${SERVICE_LIST} 
         ${BASE_LIST} ${API_LIST} ${MYSQL_LIST}
-        ${REDIS_LIST})
+        ${REDIS_LIST} ${MONITORING_LIST})
 endif()
 
 if(ENABLE_RPC)
@@ -74,6 +80,8 @@ LINK_DIRECTORIES(/usr/lib/x86_64-linux-gnu)
 if(ENABLE_RPC)
     TARGET_LINK_LIBRARIES(chat-room 
         chatroom_proto   # 链接共享的 proto 库
+        prometheus-cpp::pull
+        prometheus-cpp::core
         muduo_net 
         muduo_base
         jsoncpp 
@@ -84,6 +92,8 @@ if(ENABLE_RPC)
         pthread)
 else()
     TARGET_LINK_LIBRARIES(chat-room 
+        prometheus-cpp::pull
+        prometheus-cpp::core
         muduo_net 
         muduo_base 
         jsoncpp 

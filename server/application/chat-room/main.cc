@@ -14,6 +14,7 @@
 #include "cache_pool.h"
 #include "pub_sub_service.h"
 #include "api_msg.h"
+#include "monitoring/metrics_collector.h"
 
 #ifdef ENABLE_RPC
 #include <grpcpp/grpcpp.h>
@@ -347,6 +348,17 @@ int main(int argc, char* argv[])
     }
 
     // check_mysql_ready(db_manager);
+
+    // 初始化监控系统
+    uint16_t metrics_port = 9091;  // Comet metrics 端口
+    char *str_metrics_port = config_file.GetConfigName("metrics_port");
+    if (str_metrics_port && strlen(str_metrics_port) > 0) {
+        metrics_port = atoi(str_metrics_port);
+    }
+    
+    std::string metrics_bind_address = std::string("0.0.0.0:") + std::to_string(metrics_port);
+    MetricsCollector::GetInstance().Initialize(metrics_bind_address, "comet");
+    LOG_INFO << "Metrics endpoint initialized at http://" << metrics_bind_address << "/metrics";
 
     int num_event_loops = 0; 
     int num_threads = 0;
