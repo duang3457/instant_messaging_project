@@ -137,7 +137,7 @@ int ApiStoreMessageTiered(string room_name, std::vector<Message> &msgs)
     }
 
     for(size_t i = 0; i < msgs.size(); i++) {
-        // 存储到Redis Stream（保持原有逻辑）
+        // 存储到Redis Stream
         string json_msg = SerializeMessageToJson(msgs[i]);
         std::vector<std::pair<string, string>> field_value_pairs;
         field_value_pairs.push_back({"payload", json_msg});
@@ -164,7 +164,7 @@ int ApiStoreMessageTiered(string room_name, std::vector<Message> &msgs)
         Json::StreamWriterBuilder writer_builder;
         writer_builder.settings_["indentation"] = "";
         string persist_json = Json::writeString(writer_builder, persist_msg);
-        
+
         // 推入持久化队列
         long queue_len = cache_conn->Lpush("msg_persist_queue", persist_json);
         if (queue_len > 0) {
